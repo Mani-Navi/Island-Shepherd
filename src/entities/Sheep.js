@@ -27,6 +27,7 @@ export class Sheep {
         this.fleeTimer = 0;
         this.effectTimer = 0;
         this.frostTimer = 0;
+        this.mildChillTimer = 0; // هزینه کارت باد یخی روی گوسفندهای معمولی
         this.scatterBadgeTimer = 0;
         this.walkPhase = Math.random() * Math.PI * 2;
         this.headbuttCooldown = 0;
@@ -209,6 +210,26 @@ export class Sheep {
         this.body.setTint(0x93c5fd);
     }
 
+    applyMildChill(durationSec = 1.4) {
+        if (!this.container || this.state === 'zoomies') return;
+        this.mildChillTimer = Math.max(this.mildChillTimer, durationSec);
+        if (!this.isFireRamActive) this.body.setTint(0xbae6fd);
+    }
+
+    applyDogStartle(dogX, dogY) {
+        if (!this.canBeHerded()) return;
+        const dx = this.x - dogX;
+        const dy = this.y - dogY;
+        const dist = Math.hypot(dx, dy) || 1;
+        this.vx += (dx / dist) * 120 * this.typeCfg.knockbackMul;
+        this.vy += (dy / dist) * 120 * this.typeCfg.knockbackMul;
+        this.state = 'flee';
+        this.fleeTimer = 0.45;
+        this.scatterBadgeTimer = 0.45;
+        this.showBadge('badge_scatter', 0.65);
+        this.playHopAnim();
+    }
+
     applyBeePanic(hiveX, hiveY) {
         if (!this.canBeHerded()) return;
         const dx = this.x - hiveX;
@@ -235,7 +256,7 @@ export class Sheep {
         this.playHopAnim();
     }
 
-    triggerGentleScatter(clusterX, clusterY, shapeId) {
+    triggerGentleScatter(clusterX, clusterY, shapeId, terrain = null) {
         this.stress = 0;
         let dx = this.x - clusterX;
         let dy = this.y - clusterY;
@@ -249,8 +270,8 @@ export class Sheep {
             dy = Math.sin(a);
         }
 
-        const safe = getSafeDirection(this.x, this.y, shapeId);
-        const zone = getZoneAt(this.x, this.y, shapeId, 16);
+        const safe = getSafeDirection(this.x, this.y, shapeId, terrain);
+        const zone = getZoneAt(this.x, this.y, shapeId, 16, terrain);
         const safeWeight = zone === 'safe' ? 0.55 : 1.4;
         dx += safe.x * safeWeight;
         dy += safe.y * safeWeight;
@@ -293,7 +314,7 @@ export class Sheep {
         this.vy = 0;
         this.tearTimer = 0.04;
         this.warnIcon.setVisible(false);
-        this.hideBadge(); // بدون ایموجی یا حباب بالای سر؛ خود شکل گوسفند عوض می‌شود!
+        this.hideBadge();
         this.shadow.setVisible(false);
 
         this.scene?.tweens?.killTweensOf(this.body);
@@ -303,7 +324,6 @@ export class Sheep {
         this.body.y = -8;
         this.setScaredLook(true);
 
-        // انیمیشن جهش ناگهانی در لحظه ترسیدن تا کاملاً توجه بازیکن جلب شود
         this.body.setScale(this.baseScale * 0.65);
         this.scene.tweens.add({
             targets: this.body,
@@ -313,10 +333,10 @@ export class Sheep {
         });
     }
 
-    releaseFromWolf(shapeId = 'classic') {
+    releaseFromWolf(shapeId = 'classic', terrain = null) {
         if (!this.container) return;
         this.clearEffects();
-        const safe = getSafeDirection(this.x, this.y, shapeId);
+        const safe = getSafeDirection(this.x, this.y, shapeId, terrain);
         this.vx = safe.x * 170;
         this.vy = safe.y * 170;
         this.state = 'flee';
@@ -343,7 +363,7 @@ export class Sheep {
         );
     }
 
-    applyWhistle(wx, wy, radius, force, shapeId = 'classic', magnetLevel = 0) {
+    applyWhistle(wx, wy, radius, force, shapeId = 'classic', magnetLevel = 0, terrain = null) {
         if (!this.canBeHerded()) return false;
 
         const dx = this.x - wx;
@@ -351,8 +371,8 @@ export class Sheep {
         const dist = Math.hypot(dx, dy);
         if (dist > radius) return false;
 
-        const safe = getSafeDirection(this.x, this.y, shapeId);
-        const zone = getZoneAt(this.x, this.y, shapeId, 0);
+        const safe = getSafeDirection(this.x, this.y, shapeId, terrain);
+        const zone = getZoneAt(this.x, this.y, shapeId, 0, terrain);
         let dirX, dirY;
 
         if (dist < 18 || (dist < 36 && zone === 'beach')) {
@@ -362,7 +382,7 @@ export class Sheep {
             dirX = dx / dist;
             dirY = dy / dist;
             if (magnetLevel > 0) {
-                const pull = (zone === 'beach' ? 0.34 : 0.15) * magnetLevel;
+                const pull = (zone === 'beach' ? 0.36 : 0.16) * magnetLevel;
                 dirX += safe.x * pull;
                 dirY += safe.y * pull;
                 const l = Math.hypot(dirX, dirY) || 1;
@@ -395,8 +415,13 @@ export class Sheep {
         this.vx = this.vx * 0.28 + dirX * force * strength;
         this.vy = this.vy * 0.28 + dirY * force * strength;
 
-        if (frostLevel > 0 && this.state === 'zoomies') {
-            this.applyFrost(1.5 + frostLevel * 0.6);
+        if (frostLevel > 0) {
+            if (this.state === 'zoomies') {
+                this.applyFrost(1.5 + frostLevel * 0.6);
+            } else {
+                // هزینه بالانسی کارت باد یخی: گوسفندهای مسیر باد هم کوتاه‌مدت کند می‌شوند
+                this.applyMildChill(1.35);
+            }
         }
 
         if (this.state !== 'zoomies') {
@@ -435,13 +460,13 @@ export class Sheep {
         });
     }
 
-    enterWater(shapeId, onWaterCheck, onLostCallback) {
+    enterWater(shapeId, terrain, onWaterCheck, onLostCallback) {
         if (this.state === 'floating' || !this.container) return;
 
         if (onWaterCheck && onWaterCheck(this)) {
-            const safe = getSafeDirection(this.x, this.y, shapeId);
-            this.container.x += safe.x * 38;
-            this.container.y += safe.y * 38;
+            const safe = getSafeDirection(this.x, this.y, shapeId, terrain);
+            this.container.x += safe.x * 42;
+            this.container.y += safe.y * 42;
             this.vx = safe.x * 245;
             this.vy = safe.y * 245;
             this.clearEffects();
@@ -502,14 +527,15 @@ export class Sheep {
             });
         }
 
-        const safe = getSafeDirection(this.x, this.y, shapeId);
+        const safe = getSafeDirection(this.x, this.y, shapeId, terrain);
+        const driftDist = terrain?.getPondZoneAt(this.x, this.y) === 'water' ? 10 : 75;
         this.scene.tweens.add({
             targets: this.container,
-            x: this.x - safe.x * 75,
-            y: this.y - safe.y * 75,
+            x: this.x - safe.x * driftDist,
+            y: this.y - safe.y * driftDist,
             alpha: 0,
             scale: 0.56,
-            duration: 1600,
+            duration: 1500,
             ease: 'Sine.easeInOut',
             onComplete: () => this.destroy(),
         });
@@ -523,6 +549,7 @@ export class Sheep {
 
         const {
             shapeId,
+            terrain = null,
             allSheep,
             flowers,
             wolves,
@@ -531,6 +558,8 @@ export class Sheep {
             windVec,
             flowerRepellent,
             calmFactor = 1,
+            fleeSpeedMul = 1,
+            flowerEatSpeedMul = 1,
             goldMul = 1,
             isFever = false,
             hasFireRam = false,
@@ -550,7 +579,6 @@ export class Sheep {
             return;
         }
 
-        // حالت تقلا و ترس تمام‌بدن گوسفند در چنگ گرگ (ایستاده رو به دوربین + لرزش + اشک)
         if (this.state === 'captured') {
             const scaredScale = this.baseScale * 1.16;
             const squeeze = 1 + Math.sin(now * 0.026) * 0.08;
@@ -589,7 +617,14 @@ export class Sheep {
 
         if (this.frostTimer > 0) {
             this.frostTimer -= dt;
-            if (this.frostTimer <= 0 && this.state !== 'zoomies' && !this.isFireRamActive) {
+            if (this.frostTimer <= 0 && this.mildChillTimer <= 0 && this.state !== 'zoomies' && !this.isFireRamActive) {
+                this.body.clearTint();
+            }
+        }
+
+        if (this.mildChillTimer > 0) {
+            this.mildChillTimer -= dt;
+            if (this.mildChillTimer <= 0 && this.frostTimer <= 0 && this.state !== 'zoomies' && !this.isFireRamActive) {
                 this.body.clearTint();
             }
         }
@@ -608,8 +643,8 @@ export class Sheep {
             this.woolTimer -= dt;
             if (this.woolTimer <= 0) {
                 this.woolTimer = this.typeCfg.woolInterval * (0.85 + rand() * 0.4);
-                if (getZoneAt(this.x, this.y, shapeId, tideOffset) === 'safe') {
-                    onWoolDrop(this.x, this.y, Math.max(3, Math.round(this.typeCfg.woolValue * goldMul)));
+                if (getZoneAt(this.x, this.y, shapeId, tideOffset, terrain) === 'safe') {
+                    onWoolDrop(this.x, this.y, Math.max(2, Math.round(this.typeCfg.woolValue * goldMul)));
                 }
             }
         }
@@ -706,7 +741,7 @@ export class Sheep {
             if (this.stress >= PANIC.LIMIT) {
                 const cx = closeNeighbors > 0 ? clusterSumX / closeNeighbors : this.x;
                 const cy = closeNeighbors > 0 ? clusterSumY / closeNeighbors : this.y;
-                this.triggerGentleScatter(cx, cy, shapeId);
+                this.triggerGentleScatter(cx, cy, shapeId, terrain);
             }
         }
 
@@ -721,6 +756,13 @@ export class Sheep {
         if (windVec && !isTutorial) {
             steerX += windVec.x;
             steerY += windVec.y;
+        }
+
+        // نیروی سر خوردن تپه شیب‌دار
+        if (terrain && !isTutorial) {
+            const slope = terrain.getSlopeForceAt(this.x, this.y);
+            steerX += slope.x;
+            steerY += slope.y;
         }
 
         let attractedToHay = false;
@@ -767,7 +809,8 @@ export class Sheep {
             const chomp = 1 + Math.sin(now * 0.028) * 0.08;
             this.body.setScale(this.baseScale * chomp, this.baseScale / chomp);
             this.body.y = Math.sin(now * 0.025) * 2;
-            nearestFlower.nibble(dt * (this.type === 'glutton' ? 1.3 : 1), this, onFlowerEaten);
+            const eatRate = (this.type === 'glutton' ? 1.3 : 1) * flowerEatSpeedMul;
+            nearestFlower.nibble(dt * eatRate, this, onFlowerEaten);
             if (this.container) this.container.setDepth(10 + (this.y + 400) * 0.001);
             return;
         } else if (this.state === 'eating') {
@@ -780,8 +823,8 @@ export class Sheep {
             const d = Math.hypot(dx, dy) || 1;
             steerX += (dx / d) * 320;
             steerY += (dy / d) * 320;
-            if (getZoneAt(this.x, this.y, shapeId, tideOffset) === 'beach') {
-                const safe = getSafeDirection(this.x, this.y, shapeId);
+            if (getZoneAt(this.x, this.y, shapeId, tideOffset, terrain) === 'beach') {
+                const safe = getSafeDirection(this.x, this.y, shapeId, terrain);
                 steerX += safe.x * 260;
                 steerY += safe.y * 260;
             }
@@ -809,7 +852,7 @@ export class Sheep {
                 steerY += Math.sin(this.wanderAngle) * SHEEP_CONFIG.WANDER_SPEED * 1.65;
 
                 if (this.type === 'rebel') {
-                    const safe = getSafeDirection(this.x, this.y, shapeId);
+                    const safe = getSafeDirection(this.x, this.y, shapeId, terrain);
                     steerX -= safe.x * SHEEP_CONFIG.WANDER_SPEED * 0.55 * calmFactor;
                     steerY -= safe.y * SHEEP_CONFIG.WANDER_SPEED * 0.55 * calmFactor;
                 }
@@ -829,12 +872,18 @@ export class Sheep {
                 : this.state === 'zoomies'
                     ? SHEEP_CONFIG.ZOOMIES_SPEED
                     : this.state === 'flee'
-                        ? SHEEP_CONFIG.FLEE_SPEED
+                        ? SHEEP_CONFIG.FLEE_SPEED * fleeSpeedMul
                         : attractedToHay
                             ? SHEEP_CONFIG.WANDER_SPEED * 1.85
                             : SHEEP_CONFIG.WANDER_SPEED * 1.32 * this.typeCfg.wanderSpeedMul;
 
         if (this.frostTimer > 0 && !fireMode) maxSpeed *= 0.5;
+        else if (this.mildChillTimer > 0 && !fireMode) maxSpeed *= 0.75;
+
+        // کاهش سرعت در گل‌ولای و خارزار
+        if (terrain && !isTutorial) {
+            maxSpeed *= terrain.getSpeedMultiplierAt(this.x, this.y);
+        }
 
         const speed = Math.hypot(this.vx, this.vy);
         if (speed > maxSpeed) {
@@ -844,6 +893,11 @@ export class Sheep {
 
         this.container.x += this.vx * dt;
         this.container.y += this.vy * dt;
+
+        // برخورد با موانع جامد (تنه درخت / صخره)
+        if (terrain && !isTutorial) {
+            terrain.resolveSolidCollision(this, SHEEP_CONFIG.RADIUS);
+        }
 
         if (isTutorial) {
             const r = Math.hypot(this.container.x, this.container.y);
@@ -880,14 +934,14 @@ export class Sheep {
         this.container.setDepth(10 + (this.y + 400) * 0.001);
 
         if (!isTutorial) {
-            const zone = getZoneAt(this.x, this.y, shapeId, tideOffset);
+            const zone = getZoneAt(this.x, this.y, shapeId, tideOffset, terrain);
             if (zone === 'beach') {
                 this.warnIcon.setVisible(true);
                 this.warnIcon.y = -27 + Math.sin(now * 0.014) * 3;
             } else if (zone === 'safe') {
                 this.warnIcon.setVisible(false);
             } else if (zone === 'water') {
-                this.enterWater(shapeId, onWaterCheck, onLost);
+                this.enterWater(shapeId, terrain, onWaterCheck, onLost);
             }
         }
     }

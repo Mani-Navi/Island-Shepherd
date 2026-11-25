@@ -69,6 +69,16 @@ export class Dog {
         });
     }
 
+    startleCloseSheep(sheepList) {
+        // هزینه بالانسی کارت سگ شکارچی: پارس بلند سگ، گوسفندهای خیلی نزدیکش را کمی پراکنده می‌کند
+        for (const s of sheepList) {
+            if (!s.canBeHerded()) continue;
+            if (Math.hypot(s.x - this.x, s.y - this.y) <= DOG_CONFIG.STARTLE_RADIUS) {
+                s.applyDogStartle(this.x, this.y);
+            }
+        }
+    }
+
     spawnDust() {
         if (!this.container || !this.scene) return;
         const puff = this.scene.add
@@ -92,7 +102,7 @@ export class Dog {
         });
     }
 
-    update(dt, sheepList, wolfList, tideOffset, onWolfAction) {
+    update(dt, sheepList, wolfList, tideOffset, onWolfAction, terrain = null) {
         if (!this.container || !this.body || !this.body.scene) return;
 
         if (this.herdCooldown > 0) this.herdCooldown -= dt;
@@ -120,7 +130,6 @@ export class Dog {
         let speed = DOG_CONFIG.PATROL_SPEED * this.speedMul;
         let isSprinting = false;
 
-        // بررسی محدوده دید سگ برای تشخیص گرگ‌های فعال روی جزیره
         let nearestVisibleWolf = null;
         let bestVisibleDist = this.visionRadius + 45;
         for (const w of wolfList) {
@@ -132,7 +141,6 @@ export class Dog {
             }
         }
 
-        // پارس هشدار به محض دیدن گرگ (با جلوگیری از اسپم یا دوباره‌پارس کردن روی همان گرگ)
         if (nearestVisibleWolf) {
             const aboutToAttack = this.wolfBarkCooldown <= 0 && bestVisibleDist < 55;
             if (
@@ -141,9 +149,10 @@ export class Dog {
                 !aboutToAttack
             ) {
                 this.alertedWolf = nearestVisibleWolf;
-                this.spotBarkCooldown = 2.4;
+                this.spotBarkCooldown = 2.6;
                 sound.playBark('guard');
                 this.playBarkFx(0xf97316);
+                this.startleCloseSheep(sheepList);
             }
         } else {
             this.alertedWolf = null;
@@ -163,6 +172,7 @@ export class Dog {
             if (bestVisibleDist < 36) {
                 if (nearestWolf.scareByDog(this.x, this.y, onWolfAction)) {
                     this.playBarkFx(0xfbbf24);
+                    this.startleCloseSheep(sheepList);
                     this.wolfBarkCooldown = DOG_CONFIG.WOLF_BARK_COOLDOWN / this.speedMul;
                     this.restTimer = DOG_CONFIG.REST_DURATION / this.speedMul;
                 }
@@ -172,7 +182,7 @@ export class Dog {
             let bestDist = this.visionRadius + 40;
             for (const s of sheepList) {
                 if (!s.canBeHerded()) continue;
-                if (getZoneAt(s.x, s.y, this.shapeId, tideOffset) === 'beach') {
+                if (getZoneAt(s.x, s.y, this.shapeId, tideOffset, terrain) === 'beach') {
                     const d = Math.hypot(s.x - this.x, s.y - this.y);
                     if (d < bestDist) {
                         bestDist = d;
@@ -188,7 +198,7 @@ export class Dog {
                 isSprinting = true;
 
                 if (bestDist < 38 && this.herdCooldown <= 0) {
-                    const safe = getSafeDirection(straySheep.x, straySheep.y, this.shapeId);
+                    const safe = getSafeDirection(straySheep.x, straySheep.y, this.shapeId, terrain);
                     straySheep.herdByDog(safe.x, safe.y, DOG_CONFIG.HERD_FORCE);
                     this.playBarkFx(0xfbbf24);
                     this.herdCooldown = 1.1;
@@ -202,6 +212,10 @@ export class Dog {
             }
         }
 
+        if (terrain) {
+            speed *= terrain.getSpeedMultiplierAt(this.x, this.y);
+        }
+
         if (targetX !== null) {
             const dx = targetX - this.x;
             const dy = targetY - this.y;
@@ -212,6 +226,10 @@ export class Dog {
                 const vy = (dy / dist) * speed;
                 this.container.x += vx * dt;
                 this.container.y += vy * dt;
+
+                if (terrain) {
+                    terrain.resolveSolidCollision(this, 16);
+                }
 
                 const targetAngle = Math.atan2(vy, vx);
                 this.facingAngle = Phaser.Math.Angle.RotateTo(this.facingAngle, targetAngle, dt * 11);

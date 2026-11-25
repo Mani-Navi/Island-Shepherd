@@ -1,7 +1,9 @@
 /**
- * موتور صوتی و موزیک پس‌زمینه پویا (Web Audio API)
- * شامل: سنتز آکوستیکی طبیعی گوسفند، سگ، گرگ و عقاب با PeriodicWave و فیلترهای فرمانت
+ - موتور صوتی و موزیک پس‌زمینه پویا (Web Audio API)
+ - شامل: سنتز آکوستیکی طبیعی گوسفند، سگ، گرگ و عقاب با PeriodicWave و فیلترهای فرمانت
  */
+import { remoteAudio } from './AudioManager.js';
+
 const VOL_STORAGE_KEY = 'island_shepherd_vol_v1';
 
 class SoundManager {
@@ -130,6 +132,7 @@ class SoundManager {
                 this.createNoiseBuffer();
                 this.initVocalWaves();
                 this.applyVolumes();
+                remoteAudio.warmup(this.ctx);
             }
 
             if (this.ctx.state === 'suspended') {
@@ -256,6 +259,46 @@ class SoundManager {
         src.stop(time + 0.065);
     }
 
+    playChordStrum(notes, time, duration, volume) {
+        const ctx = this.ctx;
+        if (!ctx) return;
+        notes.forEach((freq, idx) => {
+            const t = time + idx * 0.014;
+            const osc = ctx.createOscillator();
+            const filter = ctx.createBiquadFilter();
+            const g = ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(freq, t);
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(1650, t);
+            filter.frequency.exponentialRampToValueAtTime(520, t + duration);
+            g.gain.setValueAtTime(0.0001, t);
+            g.gain.linearRampToValueAtTime(volume, t + 0.01);
+            g.gain.exponentialRampToValueAtTime(0.0001, t + duration);
+            osc.connect(filter);
+            filter.connect(g);
+            g.connect(this.musicGain);
+            osc.start(t);
+            osc.stop(t + duration + 0.02);
+        });
+    }
+
+    playSoftKick(time, volume = 0.22) {
+        const ctx = this.ctx;
+        if (!ctx) return;
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(135, time);
+        osc.frequency.exponentialRampToValueAtTime(48, time + 0.09);
+        g.gain.setValueAtTime(volume, time);
+        g.gain.exponentialRampToValueAtTime(0.0001, time + 0.11);
+        osc.connect(g);
+        g.connect(this.musicGain);
+        osc.start(time);
+        osc.stop(time + 0.12);
+    }
+
     startMusic(mode = 'calm') {
         this.musicMode = mode;
         const ctx = this.ensureContext();
@@ -272,24 +315,34 @@ class SoundManager {
                 this.scheduleMusicStep(this.musicStep, this.nextNoteTime);
                 const stepDur =
                     this.musicMode === 'intense'
-                        ? 0.19
+                        ? 0.165
                         : this.musicMode === 'menu'
-                            ? 0.28
-                            : 0.235;
+                            ? 0.23
+                            : 0.195;
                 this.nextNoteTime += stepDur;
-                this.musicStep = (this.musicStep + 1) % 32;
+                this.musicStep = (this.musicStep + 1) % 64;
             }
-        }, 70);
+        }, 65);
     }
 
     setMusicMode(mode) {
         this.musicMode = mode;
+        if (this.ctx && !this.musicMuted) {
+            if (remoteAudio.startMusicLoop(this.ctx, this.musicGain, mode)) {
+                if (this.musicTimer) {
+                    clearInterval(this.musicTimer);
+                    this.musicTimer = null;
+                }
+                return;
+            }
+        }
         if (!this.musicTimer && !this.musicMuted && this.ctx) {
             this.startMusic(mode);
         }
     }
 
     stopMusic() {
+        remoteAudio.stopMusicLoop();
         if (this.musicTimer) {
             clearInterval(this.musicTimer);
             this.musicTimer = null;
@@ -299,70 +352,101 @@ class SoundManager {
     scheduleMusicStep(step, time) {
         if (this.musicMuted) return;
 
+        // ملودی شاد جزیره‌ای ۶۴ ضرب (بخش A و B)
         const calmMelody = [
-            523.25, 0, 659.25, 587.33, 783.99, 0, 659.25, 0,
-            880.0, 783.99, 659.25, 0, 587.33, 0, 523.25, 0,
-            587.33, 0, 659.25, 783.99, 1046.5, 0, 880.0, 783.99,
-            659.25, 0, 587.33, 659.25, 523.25, 0, 392.0, 0,
+            523.25, 0, 659.25, 783.99, 880.0, 0, 783.99, 659.25,
+            587.33, 0, 659.25, 783.99, 659.25, 0, 523.25, 0,
+            659.25, 0, 783.99, 880.0, 1046.5, 0, 880.0, 783.99,
+            783.99, 659.25, 587.33, 0, 523.25, 0, 392.0, 0,
+            // بخش B پرانرژی‌تر
+            880.0, 0, 783.99, 659.25, 783.99, 0, 1046.5, 0,
+            880.0, 783.99, 659.25, 587.33, 659.25, 0, 783.99, 0,
+            1046.5, 0, 880.0, 783.99, 880.0, 659.25, 783.99, 0,
+            659.25, 587.33, 523.25, 587.33, 523.25, 0, 0, 0,
         ];
-        const calmBass = [
-            130.81, 0, 0, 0, 196.0, 0, 0, 0,
-            174.61, 0, 0, 0, 146.83, 0, 196.0, 0,
-            146.83, 0, 0, 0, 196.0, 0, 0, 0,
-            164.81, 0, 146.83, 0, 130.81, 0, 196.0, 0,
+        const calmChords = [
+            [261.63, 329.63, 392.0],  // C
+            [196.0, 246.94, 293.66],  // G
+            [220.0, 261.63, 329.63],  // Am
+            [174.61, 220.0, 261.63],  // F
         ];
+        const calmBassRoots = [130.81, 98.0, 110.0, 87.31];
 
+        // ملودی هیجانی برای باس‌فایت و ۱۰ ثانیه آخر
         const intenseMelody = [
-            587.33, 0, 698.46, 659.25, 880.0, 0, 783.99, 698.46,
+            587.33, 0, 698.46, 880.0, 880.0, 0, 783.99, 698.46,
             659.25, 0, 587.33, 523.25, 587.33, 659.25, 698.46, 0,
-            880.0, 0, 1046.5, 880.0, 783.99, 698.46, 659.25, 0,
+            880.0, 0, 1046.5, 987.77, 880.0, 0, 783.99, 698.46,
             698.46, 659.25, 587.33, 523.25, 587.33, 0, 440.0, 0,
+            1174.66, 0, 1046.5, 880.0, 1046.5, 0, 880.0, 698.46,
+            783.99, 0, 880.0, 783.99, 659.25, 0, 587.33, 0,
+            880.0, 783.99, 698.46, 659.25, 698.46, 783.99, 880.0, 0,
+            698.46, 659.25, 587.33, 523.25, 587.33, 0, 0, 0,
         ];
-        const intenseBass = [
-            146.83, 0, 146.83, 0, 174.61, 0, 164.81, 0,
-            130.81, 0, 130.81, 0, 146.83, 0, 110.0, 0,
-            146.83, 0, 146.83, 0, 196.0, 0, 174.61, 0,
-            130.81, 0, 164.81, 0, 146.83, 0, 110.0, 0,
+        const intenseChords = [
+            [293.66, 349.23, 440.0],  // Dm
+            [233.08, 293.66, 349.23], // Bb
+            [261.63, 329.63, 392.0],  // C
+            [220.0, 277.18, 329.63],  // A
         ];
+        const intenseBassRoots = [146.83, 116.54, 130.81, 110.0];
 
         const isIntense = this.musicMode === 'intense';
+        const isMenu = this.musicMode === 'menu';
         const melody = isIntense ? intenseMelody : calmMelody;
-        const bass = isIntense ? intenseBass : calmBass;
+        const barIdx = Math.floor((step % 32) / 8);
+        const chord = (isIntense ? intenseChords : calmChords)[barIdx];
+        const root = (isIntense ? intenseBassRoots : calmBassRoots)[barIdx];
 
+        // ۱. ملودی اصلی
         const mFreq = melody[step];
         if (mFreq > 0) {
-            const vol = this.musicMode === 'menu' ? 0.14 : isIntense ? 0.2 : 0.17;
-            this.playPluck(mFreq, time, isIntense ? 0.34 : 0.48, vol, this.musicGain, 4);
+            const vol = isMenu ? 0.14 : isIntense ? 0.2 : 0.18;
+            this.playPluck(mFreq, time, isIntense ? 0.28 : 0.38, vol, this.musicGain, 5);
         }
 
-        const bFreq = bass[step];
-        if (bFreq > 0) {
+        // ۲. آکورد یوکوله‌له روی ضرب‌های ۲ و ۶ (ایجاد ریتم شاد جزیره‌ای)
+        const beatInBar = step % 8;
+        if (beatInBar === 2 || beatInBar === 6) {
+            this.playChordStrum(chord, time, 0.22, isMenu ? 0.065 : isIntense ? 0.085 : 0.075);
+        }
+
+        // ۳. بیس حرکتی گرم (ضرب ۱ و ۵)
+        if (beatInBar === 0 || beatInBar === 4 || (isIntense && beatInBar === 6)) {
+            const bFreq = beatInBar === 4 ? root * 1.5 : root;
             const osc = this.ctx.createOscillator();
             const f = this.ctx.createBiquadFilter();
-            const g = this.ctx.createGain();
+            const g = ctx.createGain();
             osc.type = 'triangle';
             osc.frequency.setValueAtTime(bFreq, time);
             f.type = 'lowpass';
             f.frequency.setValueAtTime(isIntense ? 420 : 320, time);
             g.gain.setValueAtTime(0.0001, time);
-            g.gain.linearRampToValueAtTime(isIntense ? 0.24 : 0.18, time + 0.02);
-            g.gain.exponentialRampToValueAtTime(0.0001, time + (isIntense ? 0.34 : 0.52));
+            g.gain.linearRampToValueAtTime(isIntense ? 0.24 : 0.19, time + 0.015);
+            g.gain.exponentialRampToValueAtTime(0.0001, time + 0.34);
             osc.connect(f);
             f.connect(g);
             g.connect(this.musicGain);
             osc.start(time);
-            osc.stop(time + 0.56);
+            osc.stop(time + 0.38);
         }
 
-        if (this.musicMode !== 'menu') {
-            if (step % 4 === 2) this.playSoftPerc(time, isIntense);
-            else if (isIntense && step % 2 === 1) this.playSoftPerc(time, false);
+        // ۴. کوبه‌ای نرم (کیک + شیکر)
+        if (!isMenu) {
+            if (beatInBar === 0 || (isIntense && beatInBar === 4)) {
+                this.playSoftKick(time, isIntense ? 0.24 : 0.16);
+            }
+            if (beatInBar === 2 || beatInBar === 6) {
+                this.playSoftPerc(time, isIntense);
+            } else if (isIntense && beatInBar % 2 === 1) {
+                this.playSoftPerc(time, false);
+            }
         }
     }
 
     /**
-     * سنتز پیشرفته بع‌بع گوسفند:
-     * موج حنجره‌ای اختصاصی + شروع انفجاری نرم «بَـ/مَـ» + لرزش تاخیردار گلو (۱۴–۱۶ هرتز) + ۳ فرمانت طبیعی
+     - سنتز پیشرفته بع‌بع گوسفند:
+     - موج حنجره‌ای اختصاصی + شروع انفجاری نرم «بَـ/مَـ» + لرزش تاخیردار گلو (۱۴–۱۶ هرتز) + ۳ فرمانت طبیعی
      */
     synthesizeSingleBleat(startTime, opts) {
         const ctx = this.ctx;
@@ -516,6 +600,9 @@ class SoundManager {
         try {
             const ctx = this.ensureContext();
             if (!ctx || this.sfxMuted) return;
+            const rate = mood === 'scared' ? 1.32 : mood === 'calm' ? 0.88 : 1.05;
+            const vol = mood === 'calm' ? 0.48 : mood === 'scared' ? 0.92 : 0.82;
+            if (remoteAudio.playSfx(ctx, this.sfxGain, 'sheep', { volume: vol, baseRate: rate, pitchJitter: 0.1, maxDur: 1.05 })) return;
             const now = ctx.currentTime;
 
             if (mood === 'scared') {
@@ -566,12 +653,12 @@ class SoundManager {
     }
 
     /**
-     * سنتز واقعی پارس سگ گله:
-     * ضربه سینه + حنجره خشن اشباع‌شده با حرکت سریع زیر‌و‌بمی + پف هوای پوزه
+     - سنتز واقعی پارس سگ گله:
+     - ضربه سینه + حنجره خشن اشباع‌شده با حرکت سریع زیر‌و‌بمی + پف هوای پوزه
      */
     /**
-     * سنتز آکوستیکی واقعی پارس سگ گله (بدون صدای کوبه‌ای/تنبکی):
-     * حنجره خشن با جیتِر طبیعی + گرش زیرصدا + هوای پوزه که همگی از فیلتر فک و پوزه عبور می‌کنند
+     - سنتز آکوستیکی واقعی پارس سگ گله (بدون صدای کوبه‌ای/تنبکی):
+     - حنجره خشن با جیتِر طبیعی + گرش زیرصدا + هوای پوزه که همگی از فیلتر فک و پوزه عبور می‌کنند
      */
     synthesizeSingleBark(startTime, style = 'guard', pitchShift = 1.0) {
         const ctx = this.ctx;
@@ -724,6 +811,8 @@ class SoundManager {
         try {
             const ctx = this.ensureContext();
             if (!ctx || this.sfxMuted) return;
+            const rate = style === 'herd' ? 1.2 : 0.96;
+            if (remoteAudio.playSfx(ctx, this.sfxGain, 'dog', { volume: style === 'herd' ? 0.7 : 0.88, baseRate: rate, pitchJitter: 0.1, maxDur: 0.9 })) return;
             const now = ctx.currentTime;
 
             if (style === 'herd') {
@@ -740,8 +829,8 @@ class SoundManager {
     }
 
     /**
-     * سنتز طبیعی و عمیق زوزه گرگ («آاووو...»):
-     * موج آوازی صاف (بدون خش اره)، حرکت فرمانت دهان، نفس هوایی و پژواک فضای باز جزیره
+     - سنتز طبیعی و عمیق زوزه گرگ («آاووو...»):
+     - موج آوازی صاف (بدون خش اره)، حرکت فرمانت دهان، نفس هوایی و پژواک فضای باز جزیره
      */
     synthesizeHowlVoice(startTime, opts) {
         const ctx = this.ctx;
@@ -858,6 +947,8 @@ class SoundManager {
         try {
             const ctx = this.ensureContext();
             if (!ctx || this.sfxMuted) return;
+            const rate = isAlpha ? 0.74 : isSwift ? 1.32 : 1.0;
+            if (remoteAudio.playSfx(ctx, this.sfxGain, 'wolf', { volume: isAlpha ? 0.92 : 0.78, baseRate: rate, pitchJitter: 0.06, maxDur: 1.6 })) return;
             const now = ctx.currentTime;
 
             const low = isAlpha ? 155 : isSwift ? 285 : 225;
@@ -1014,6 +1105,7 @@ class SoundManager {
         try {
             const ctx = this.ensureContext();
             if (!ctx || this.sfxMuted) return;
+            if (remoteAudio.playSfx(ctx, this.sfxGain, 'eagle', { volume: 0.82, baseRate: 1.02, pitchJitter: 0.08, maxDur: 1.1 })) return;
             const now = ctx.currentTime;
 
             const playCry = (startTime, volMul) => {
@@ -1158,6 +1250,7 @@ class SoundManager {
         try {
             const ctx = this.ensureContext();
             if (!ctx || this.sfxMuted) return;
+            if (remoteAudio.playSfx(ctx, this.sfxGain, 'boss', { volume: 0.92, baseRate: 0.98, pitchJitter: 0.05, maxDur: 1.8 })) return;
             const now = ctx.currentTime;
             const osc = ctx.createOscillator();
             const sub = ctx.createOscillator();

@@ -85,8 +85,8 @@ function drawOutlinedSheep(scene, key, outerWool, midWool, innerWool, headColor,
 }
 
 /**
- * شکل تمام‌بدن و نمای روبه‌روی گوسفند کیوت و وحشت‌زده (هنگام اسارت در چنگ گرگ یا سقوط در آب)
- * با دست‌وپاهای بالارفته در حال تقلا، چشم‌های درشت اشکی و صورت گریان
+ - شکل تمام‌بدن و نمای روبه‌روی گوسفند کیوت و وحشت‌زده (هنگام اسارت در چنگ گرگ یا سقوط در آب)
+ - با دست‌وپاهای بالارفته در حال تقلا، چشم‌های درشت اشکی و صورت گریان
  */
 function drawFrontScaredSheep(scene, key, outerWool, midWool, innerWool, headColor, opts = {}) {
     if (scene.textures.exists(key)) return;
@@ -772,4 +772,51 @@ export function generateTextures(scene) {
         g.lineBetween(c - 6, c - 3, c + 5, c - 3);
         g.lineBetween(c - 4, c + 2, c + 6, c + 2);
     });
+
+    if (!scene.textures.exists('terrain_rock')) {
+        const g = scene.make.graphics({ x: 0, y: 0, add: false });
+        const c = 32;
+        g.fillStyle(0x0f172a, 0.24);
+        g.fillEllipse(c, c + 12, 46, 22);
+        g.fillStyle(0x1e293b, 0.92);
+        g.fillCircle(c - 7, c + 2, 16);
+        g.fillCircle(c + 8, c + 4, 14);
+        g.fillCircle(c + 1, c - 6, 15);
+        g.fillStyle(0x64748b, 1);
+        g.fillCircle(c - 7, c + 2, 13.5);
+        g.fillCircle(c + 8, c + 4, 11.5);
+        g.fillCircle(c + 1, c - 6, 12.5);
+        g.fillStyle(0x94a3b8, 1);
+        g.fillCircle(c - 5, c - 3, 9.5);
+        g.fillCircle(c + 5, c - 1, 7.5);
+        g.fillStyle(0xcbd5e1, 0.75);
+        g.fillEllipse(c - 6, c - 8, 9, 5);
+        g.generateTexture('terrain_rock', 64, 64);
+        g.destroy();
+    }
+
+    if (!scene.textures.exists('terrain_tree')) {
+        const g = scene.make.graphics({ x: 0, y: 0, add: false });
+        const c = 32;
+        g.fillStyle(0x0f172a, 0.24);
+        g.fillEllipse(c, c + 14, 48, 22);
+        g.fillStyle(0x78350f, 1);
+        g.fillRoundedRect(c - 5, c + 4, 10, 14, 4);
+        g.fillStyle(0x0f172a, 0.88);
+        g.fillCircle(c - 10, c + 2, 14);
+        g.fillCircle(c + 10, c + 2, 14);
+        g.fillCircle(c, c - 9, 16);
+        g.fillStyle(0x15803d, 1);
+        g.fillCircle(c - 10, c + 2, 11.5);
+        g.fillCircle(c + 10, c + 2, 11.5);
+        g.fillCircle(c, c - 9, 13.5);
+        g.fillStyle(0x22c55e, 1);
+        g.fillCircle(c - 7, c - 1, 9);
+        g.fillCircle(c + 7, c - 1, 8.5);
+        g.fillCircle(c, c - 10, 10.5);
+        g.fillStyle(0x86efac, 0.72);
+        g.fillCircle(c - 3, c - 13, 5.5);
+        g.generateTexture('terrain_tree', 64, 64);
+        g.destroy();
+    }
 }
