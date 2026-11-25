@@ -1,8 +1,7 @@
 /**
- - موتور صوتی و موزیک پس‌زمینه پویا (Web Audio API)
- - شامل: سنتز آکوستیکی طبیعی گوسفند، سگ، گرگ و عقاب با PeriodicWave و فیلترهای فرمانت
+ * موتور صوتی و موزیک پس‌زمینه پویا (Web Audio API)
+ * شامل: سنتز آکوستیکی طبیعی گوسفند، سگ، گرگ و عقاب با PeriodicWave و فیلترهای فرمانت
  */
-import { remoteAudio } from './AudioManager.js';
 
 const VOL_STORAGE_KEY = 'island_shepherd_vol_v1';
 
@@ -14,7 +13,6 @@ class SoundManager {
         this.musicGain = null;
         this.noiseBuffer = null;
 
-        // موج‌های حنجره‌ای و منحنی اشباع کش‌شده
         this.sheepWave = null;
         this.dogWave = null;
         this.wolfWave = null;
@@ -132,7 +130,6 @@ class SoundManager {
                 this.createNoiseBuffer();
                 this.initVocalWaves();
                 this.applyVolumes();
-                remoteAudio.warmup(this.ctx);
             }
 
             if (this.ctx.state === 'suspended') {
@@ -146,26 +143,22 @@ class SoundManager {
 
     initVocalWaves() {
         try {
-            // موج حنجره‌ای گرم و پالس‌مانند گوسفند (غنی در هارمونیک‌های میانی، بدون تیزی فلزی)
             const sReal = new Float32Array(14);
             const sImag = new Float32Array([
                 0, 1.0, 0.82, 0.64, 0.52, 0.42, 0.34, 0.25, 0.18, 0.12, 0.08, 0.05, 0.03, 0.015,
             ]);
             this.sheepWave = this.ctx.createPeriodicWave(sReal, sImag);
 
-            // موج خشن و پرقدرت حنجره سگ
             const dReal = new Float32Array(12);
             const dImag = new Float32Array([
                 0, 1.0, 0.68, 0.72, 0.45, 0.5, 0.28, 0.22, 0.14, 0.09, 0.05, 0.02,
             ]);
             this.dogWave = this.ctx.createPeriodicWave(dReal, dImag);
 
-            // موج صاف، عمیق و آوازی زوزه گرگ
             const wReal = new Float32Array(8);
             const wImag = new Float32Array([0, 1.0, 0.32, 0.16, 0.06, 0.025, 0.01, 0.005]);
             this.wolfWave = this.ctx.createPeriodicWave(wReal, wImag);
 
-            // منحنی اشباع ملایم برای ساخت بافت خشن صدای پارس سگ
             const n = 512;
             const curve = new Float32Array(n);
             for (let i = 0; i < n; i++) {
@@ -174,7 +167,7 @@ class SoundManager {
             }
             this.barkDriveCurve = curve;
         } catch {
-            // fallback به موج‌های استاندارد در مرورگرهای خاص
+            // fallback
         }
     }
 
@@ -310,6 +303,9 @@ class SoundManager {
 
         this.musicTimer = setInterval(() => {
             if (!this.ctx || this.ctx.state !== 'running') return;
+            if (this.nextNoteTime < this.ctx.currentTime - 0.1) {
+                this.nextNoteTime = this.ctx.currentTime + 0.05;
+            }
             const lookAhead = 0.22;
             while (this.nextNoteTime < this.ctx.currentTime + lookAhead) {
                 this.scheduleMusicStep(this.musicStep, this.nextNoteTime);
@@ -327,22 +323,12 @@ class SoundManager {
 
     setMusicMode(mode) {
         this.musicMode = mode;
-        if (this.ctx && !this.musicMuted) {
-            if (remoteAudio.startMusicLoop(this.ctx, this.musicGain, mode)) {
-                if (this.musicTimer) {
-                    clearInterval(this.musicTimer);
-                    this.musicTimer = null;
-                }
-                return;
-            }
-        }
-        if (!this.musicTimer && !this.musicMuted && this.ctx) {
+        if (!this.musicTimer && !this.musicMuted) {
             this.startMusic(mode);
         }
     }
 
     stopMusic() {
-        remoteAudio.stopMusicLoop();
         if (this.musicTimer) {
             clearInterval(this.musicTimer);
             this.musicTimer = null;
@@ -350,29 +336,27 @@ class SoundManager {
     }
 
     scheduleMusicStep(step, time) {
-        if (this.musicMuted) return;
+        if (this.musicMuted || !this.ctx) return;
+        const ctx = this.ctx;
 
-        // ملودی شاد جزیره‌ای ۶۴ ضرب (بخش A و B)
         const calmMelody = [
             523.25, 0, 659.25, 783.99, 880.0, 0, 783.99, 659.25,
             587.33, 0, 659.25, 783.99, 659.25, 0, 523.25, 0,
             659.25, 0, 783.99, 880.0, 1046.5, 0, 880.0, 783.99,
             783.99, 659.25, 587.33, 0, 523.25, 0, 392.0, 0,
-            // بخش B پرانرژی‌تر
             880.0, 0, 783.99, 659.25, 783.99, 0, 1046.5, 0,
             880.0, 783.99, 659.25, 587.33, 659.25, 0, 783.99, 0,
             1046.5, 0, 880.0, 783.99, 880.0, 659.25, 783.99, 0,
             659.25, 587.33, 523.25, 587.33, 523.25, 0, 0, 0,
         ];
         const calmChords = [
-            [261.63, 329.63, 392.0],  // C
-            [196.0, 246.94, 293.66],  // G
-            [220.0, 261.63, 329.63],  // Am
-            [174.61, 220.0, 261.63],  // F
+            [261.63, 329.63, 392.0],
+            [196.0, 246.94, 293.66],
+            [220.0, 261.63, 329.63],
+            [174.61, 220.0, 261.63],
         ];
         const calmBassRoots = [130.81, 98.0, 110.0, 87.31];
 
-        // ملودی هیجانی برای باس‌فایت و ۱۰ ثانیه آخر
         const intenseMelody = [
             587.33, 0, 698.46, 880.0, 880.0, 0, 783.99, 698.46,
             659.25, 0, 587.33, 523.25, 587.33, 659.25, 698.46, 0,
@@ -384,10 +368,10 @@ class SoundManager {
             698.46, 659.25, 587.33, 523.25, 587.33, 0, 0, 0,
         ];
         const intenseChords = [
-            [293.66, 349.23, 440.0],  // Dm
-            [233.08, 293.66, 349.23], // Bb
-            [261.63, 329.63, 392.0],  // C
-            [220.0, 277.18, 329.63],  // A
+            [293.66, 349.23, 440.0],
+            [233.08, 293.66, 349.23],
+            [261.63, 329.63, 392.0],
+            [220.0, 277.18, 329.63],
         ];
         const intenseBassRoots = [146.83, 116.54, 130.81, 110.0];
 
@@ -398,24 +382,21 @@ class SoundManager {
         const chord = (isIntense ? intenseChords : calmChords)[barIdx];
         const root = (isIntense ? intenseBassRoots : calmBassRoots)[barIdx];
 
-        // ۱. ملودی اصلی
         const mFreq = melody[step];
         if (mFreq > 0) {
             const vol = isMenu ? 0.14 : isIntense ? 0.2 : 0.18;
             this.playPluck(mFreq, time, isIntense ? 0.28 : 0.38, vol, this.musicGain, 5);
         }
 
-        // ۲. آکورد یوکوله‌له روی ضرب‌های ۲ و ۶ (ایجاد ریتم شاد جزیره‌ای)
         const beatInBar = step % 8;
         if (beatInBar === 2 || beatInBar === 6) {
             this.playChordStrum(chord, time, 0.22, isMenu ? 0.065 : isIntense ? 0.085 : 0.075);
         }
 
-        // ۳. بیس حرکتی گرم (ضرب ۱ و ۵)
         if (beatInBar === 0 || beatInBar === 4 || (isIntense && beatInBar === 6)) {
             const bFreq = beatInBar === 4 ? root * 1.5 : root;
-            const osc = this.ctx.createOscillator();
-            const f = this.ctx.createBiquadFilter();
+            const osc = ctx.createOscillator();
+            const f = ctx.createBiquadFilter();
             const g = ctx.createGain();
             osc.type = 'triangle';
             osc.frequency.setValueAtTime(bFreq, time);
@@ -431,7 +412,6 @@ class SoundManager {
             osc.stop(time + 0.38);
         }
 
-        // ۴. کوبه‌ای نرم (کیک + شیکر)
         if (!isMenu) {
             if (beatInBar === 0 || (isIntense && beatInBar === 4)) {
                 this.playSoftKick(time, isIntense ? 0.24 : 0.16);
@@ -444,10 +424,6 @@ class SoundManager {
         }
     }
 
-    /**
-     - سنتز پیشرفته بع‌بع گوسفند:
-     - موج حنجره‌ای اختصاصی + شروع انفجاری نرم «بَـ/مَـ» + لرزش تاخیردار گلو (۱۴–۱۶ هرتز) + ۳ فرمانت طبیعی
-     */
     synthesizeSingleBleat(startTime, opts) {
         const ctx = this.ctx;
         if (!ctx) return;
@@ -476,7 +452,6 @@ class SoundManager {
             if (i === 1) osc.detune.setValueAtTime(9, startTime);
         });
 
-        // لرزش طبیعی گلوی گوسفند که با کمی تأخیر بعد از هجای اول شروع می‌شود («بَـ...عَـعَـع»)
         const flutter = ctx.createOscillator();
         flutter.type = 'sine';
         flutter.frequency.setValueAtTime(flutterRate, startTime);
@@ -490,7 +465,6 @@ class SoundManager {
         pitchDepth.connect(v1.frequency);
         pitchDepth.connect(v2.frequency);
 
-        // باز شدن لب‌ها در ابتدای صدا برای ساخت واقعی هجای «مَـ / بَـ»
         const mouth = ctx.createBiquadFilter();
         mouth.type = 'lowpass';
         mouth.frequency.setValueAtTime(230, startTime);
@@ -506,7 +480,6 @@ class SoundManager {
         v2.connect(v2Mix);
         v2Mix.connect(mouth);
 
-        // ضربه نرم و کوتاه لب‌ها + نفس طبیعی
         if (this.noiseBuffer) {
             const pop = ctx.createBufferSource();
             pop.buffer = this.noiseBuffer;
@@ -539,7 +512,6 @@ class SoundManager {
             breath.stop(startTime + duration + 0.04);
         }
 
-        // گره لرزش دامنه (تاخیردار، طبیعی و بدون صدای رباتیک)
         const tremolo = ctx.createGain();
         tremolo.gain.setValueAtTime(0.72, startTime);
         const ampDepth = ctx.createGain();
@@ -549,7 +521,6 @@ class SoundManager {
         flutter.connect(ampDepth);
         ampDepth.connect(tremolo.gain);
 
-        // ۳ فرمانت مصوت باز و تو‌دماغی گوسفند («ـَع / ـِه»)
         const formants = [
             { f: 710 * formantScale, q: 2.8, g: 1.05 },
             { f: 1560 * formantScale, q: 3.3, g: 0.72 },
@@ -571,7 +542,6 @@ class SoundManager {
             fg.connect(tremolo);
         }
 
-        // نرم‌کننده نهایی برای طبیعی و گرم شدن صدا
         const warmth = ctx.createBiquadFilter();
         warmth.type = 'lowpass';
         warmth.frequency.setValueAtTime(3100, startTime);
@@ -600,13 +570,9 @@ class SoundManager {
         try {
             const ctx = this.ensureContext();
             if (!ctx || this.sfxMuted) return;
-            const rate = mood === 'scared' ? 1.32 : mood === 'calm' ? 0.88 : 1.05;
-            const vol = mood === 'calm' ? 0.48 : mood === 'scared' ? 0.92 : 0.82;
-            if (remoteAudio.playSfx(ctx, this.sfxGain, 'sheep', { volume: vol, baseRate: rate, pitchJitter: 0.1, maxDur: 1.05 })) return;
             const now = ctx.currentTime;
 
             if (mood === 'scared') {
-                // صدای مظلومانه و برّه‌مانند درخواست کمک هنگام اسارت در چنگ گرگ
                 const pitch = 218 + Math.random() * 28;
                 this.synthesizeSingleBleat(now, {
                     baseFreq: pitch,
@@ -628,7 +594,6 @@ class SoundManager {
             }
 
             if (mood === 'calm') {
-                // بع‌بع آرام، بم‌تر و گرم در فضای چمنزار
                 this.synthesizeSingleBleat(now, {
                     baseFreq: 146 + Math.random() * 28,
                     duration: 0.48 + Math.random() * 0.1,
@@ -639,7 +604,6 @@ class SoundManager {
                 return;
             }
 
-            // بع‌بع شاد و واضح هنگام هدایت یا نجات
             this.synthesizeSingleBleat(now, {
                 baseFreq: 184 + Math.random() * 32,
                 duration: 0.36 + Math.random() * 0.07,
@@ -652,14 +616,6 @@ class SoundManager {
         }
     }
 
-    /**
-     - سنتز واقعی پارس سگ گله:
-     - ضربه سینه + حنجره خشن اشباع‌شده با حرکت سریع زیر‌و‌بمی + پف هوای پوزه
-     */
-    /**
-     - سنتز آکوستیکی واقعی پارس سگ گله (بدون صدای کوبه‌ای/تنبکی):
-     - حنجره خشن با جیتِر طبیعی + گرش زیرصدا + هوای پوزه که همگی از فیلتر فک و پوزه عبور می‌کنند
-     */
     synthesizeSingleBark(startTime, style = 'guard', pitchShift = 1.0) {
         const ctx = this.ctx;
         if (!ctx) return;
@@ -669,11 +625,9 @@ class SoundManager {
         const vol = isHerd ? 0.28 : 0.36;
         const stopAt = startTime + dur + 0.07;
 
-        // ورودی مشترک حفره دهان و پوزه (حنجره + نفس هر دو از یک مسیر آکوستیکی می‌گذرند)
         const tractInput = ctx.createGain();
         tractInput.gain.setValueAtTime(1.0, startTime);
 
-        // ۱. حنجره اصلی + زیرصدای گرش (بدون موج سینوسی طبل‌مانند)
         const vox = ctx.createOscillator();
         const subGrowl = ctx.createOscillator();
         vox.type = 'sawtooth';
@@ -694,7 +648,6 @@ class SoundManager {
         subGrowl.frequency.linearRampToValueAtTime(fMid * 0.5, startTime + dur * 0.55);
         subGrowl.frequency.exponentialRampToValueAtTime(fEnd * 0.5, startTime + dur);
 
-        // جیتِر تصادفی و طبیعی تارهای صوتی سگ (نویز فیلترشده روی فرکانس؛ خیلی طبیعی‌تر از LFO)
         if (this.noiseBuffer) {
             const jitterSrc = ctx.createBufferSource();
             jitterSrc.buffer = this.noiseBuffer;
@@ -716,7 +669,6 @@ class SoundManager {
         const subGain = ctx.createGain();
         subGain.gain.setValueAtTime(isHerd ? 0.24 : 0.42, startTime);
 
-        // اشباع ملایم حنجره برای خش واقعی پارس
         const shaper = ctx.createWaveShaper();
         if (this.barkDriveCurve) shaper.curve = this.barkDriveCurve;
 
@@ -729,7 +681,6 @@ class SoundManager {
         shaper.connect(voxMix);
         voxMix.connect(tractInput);
 
-        // ۲. هوای پرفشار و نفس پوزه سگ («هـ...ـاف / وُ...ـف») داخل همان حفره دهان
         if (this.noiseBuffer) {
             const breath = ctx.createBufferSource();
             breath.buffer = this.noiseBuffer;
@@ -753,7 +704,6 @@ class SoundManager {
             breath.start(startTime, bOffset, dur + 0.08);
         }
 
-        // ۳. حرکت باز و بسته شدن فک سگ
         const jawFilter = ctx.createBiquadFilter();
         jawFilter.type = 'lowpass';
         jawFilter.frequency.setValueAtTime(480, startTime);
@@ -764,14 +714,12 @@ class SoundManager {
 
         tractInput.connect(jawFilter);
 
-        // ۴. سه فرمانت موازی گلو، پوزه و دندان سگ
         const formants = [
             { f: (isHerd ? 740 : 570) * pitchShift, q: 2.3, g: 1.15 },
             { f: (isHerd ? 1560 : 1260) * pitchShift, q: 2.9, g: 0.92 },
             { f: (isHerd ? 2650 : 2200) * pitchShift, q: 3.1, g: 0.36 },
         ];
 
-        // حذف فرکانس‌های بمِ طبل‌مانند برای تمیز و آوازی ماندن پارس
         const antiBoomHP = ctx.createBiquadFilter();
         antiBoomHP.type = 'highpass';
         antiBoomHP.frequency.setValueAtTime(125, startTime);
@@ -791,7 +739,6 @@ class SoundManager {
             fg.connect(antiBoomHP);
         }
 
-        // ۵. پوشش آوازی (با بدنه کامل، نه ضربه لحظه‌ای طبل)
         const env = ctx.createGain();
         env.gain.setValueAtTime(0.0001, startTime);
         env.gain.linearRampToValueAtTime(vol, startTime + 0.02);
@@ -811,14 +758,11 @@ class SoundManager {
         try {
             const ctx = this.ensureContext();
             if (!ctx || this.sfxMuted) return;
-            const rate = style === 'herd' ? 1.2 : 0.96;
-            if (remoteAudio.playSfx(ctx, this.sfxGain, 'dog', { volume: style === 'herd' ? 0.7 : 0.88, baseRate: rate, pitchJitter: 0.1, maxDur: 0.9 })) return;
             const now = ctx.currentTime;
 
             if (style === 'herd') {
                 this.synthesizeSingleBark(now, 'herd', 0.96 + Math.random() * 0.09);
             } else {
-                // پارس دوتایی طبیعی: اولی کوتاه و تیزتر (هشدار)، دومی پرحجم‌تر و بم‌تر
                 const p = 0.96 + Math.random() * 0.07;
                 this.synthesizeSingleBark(now, 'herd', p * 0.92);
                 this.synthesizeSingleBark(now + 0.195 + Math.random() * 0.03, 'guard', p * 0.96);
@@ -828,10 +772,6 @@ class SoundManager {
         }
     }
 
-    /**
-     - سنتز طبیعی و عمیق زوزه گرگ («آاووو...»):
-     - موج آوازی صاف (بدون خش اره)، حرکت فرمانت دهان، نفس هوایی و پژواک فضای باز جزیره
-     */
     synthesizeHowlVoice(startTime, opts) {
         const ctx = this.ctx;
         if (!ctx) return;
@@ -856,7 +796,6 @@ class SoundManager {
             if (i === 1) osc.detune.setValueAtTime(7, startTime);
         });
 
-        // ویبراتوی آرام و طبیعی زوزه که پس از اوج گرفتن شروع می‌شود
         const vib = ctx.createOscillator();
         const vibG = ctx.createGain();
         vib.frequency.setValueAtTime(5.2, startTime);
@@ -870,7 +809,6 @@ class SoundManager {
         const v2Mix = ctx.createGain();
         v2Mix.gain.setValueAtTime(0.45, startTime);
 
-        // فرمانت اصلی دهان گرگ (حرکت از «او» بسته به «آو» باز و بازگشت به «او»)
         const f1 = ctx.createBiquadFilter();
         f1.type = 'bandpass';
         f1.frequency.setValueAtTime(low * 1.9, startTime);
@@ -888,7 +826,6 @@ class SoundManager {
         const f2G = ctx.createGain();
         f2G.gain.setValueAtTime(0.32, startTime);
 
-        // لایه سینه/پایه شفاف برای حس طبیعی بودن
         const bodyLP = ctx.createBiquadFilter();
         bodyLP.type = 'lowpass';
         bodyLP.frequency.setValueAtTime(peak * 1.4, startTime);
@@ -914,7 +851,6 @@ class SoundManager {
         bodyG.connect(env);
         env.connect(this.sfxGain);
 
-        // لایه لطیف هوای نفس همراه زوزه
         if (this.noiseBuffer) {
             const air = ctx.createBufferSource();
             air.buffer = this.noiseBuffer;
@@ -947,8 +883,6 @@ class SoundManager {
         try {
             const ctx = this.ensureContext();
             if (!ctx || this.sfxMuted) return;
-            const rate = isAlpha ? 0.74 : isSwift ? 1.32 : 1.0;
-            if (remoteAudio.playSfx(ctx, this.sfxGain, 'wolf', { volume: isAlpha ? 0.92 : 0.78, baseRate: rate, pitchJitter: 0.06, maxDur: 1.6 })) return;
             const now = ctx.currentTime;
 
             const low = isAlpha ? 155 : isSwift ? 285 : 225;
@@ -957,12 +891,9 @@ class SoundManager {
             const dur = isAlpha ? 1.25 : isSwift ? 0.78 : 1.02;
             const vol = isAlpha ? 0.34 : 0.26;
 
-            // زوزه اصلی
             this.synthesizeHowlVoice(now, { low, peak, tail, dur, volume: vol });
-            // پژواک نرم در فضای باز جزیره
             this.synthesizeHowlVoice(now + 0.24, { low, peak, tail, dur, volume: vol * 0.3 });
 
-            // برای گرگ آلفا، یک پاسخ کوتاه و دور از گله گرگ‌ها هم شنیده می‌شود
             if (isAlpha) {
                 this.synthesizeHowlVoice(now + 0.42, {
                     low: 250,
@@ -1105,7 +1036,6 @@ class SoundManager {
         try {
             const ctx = this.ensureContext();
             if (!ctx || this.sfxMuted) return;
-            if (remoteAudio.playSfx(ctx, this.sfxGain, 'eagle', { volume: 0.82, baseRate: 1.02, pitchJitter: 0.08, maxDur: 1.1 })) return;
             const now = ctx.currentTime;
 
             const playCry = (startTime, volMul) => {
@@ -1250,7 +1180,6 @@ class SoundManager {
         try {
             const ctx = this.ensureContext();
             if (!ctx || this.sfxMuted) return;
-            if (remoteAudio.playSfx(ctx, this.sfxGain, 'boss', { volume: 0.92, baseRate: 0.98, pitchJitter: 0.05, maxDur: 1.8 })) return;
             const now = ctx.currentTime;
             const osc = ctx.createOscillator();
             const sub = ctx.createOscillator();

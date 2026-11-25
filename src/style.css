@@ -1120,7 +1120,7 @@ canvas {
 }
 
 /* =========================================================
-   نسخه گوشی
+   نسخه بهینه‌شده موبایل (استاندارد UI/UX و لمس ۴۴px)
    ========================================================= */
 @media (max-width: 780px) {
   .hud-hide-mobile {
@@ -1128,22 +1128,31 @@ canvas {
   }
 
   .game-overlay {
-    padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+    padding: max(14px, env(safe-area-inset-top)) 14px max(14px, env(safe-area-inset-bottom));
+    overscroll-behavior: contain;
   }
 
   .pop-shell,
   .pop-shell.is-wide {
     width: 100%;
     max-width: 460px;
-    gap: 8px;
+    gap: 10px;
+  }
+
+  .pop-body,
+  .pop-scroll-list {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    gap: 9px;
   }
 
   .pop-header {
-    padding: 0 46px;
+    padding: 2px 48px 0;
   }
 
   .pop-title {
-    font-size: 24px;
+    font-size: clamp(22px, 6.2vw, 28px);
+    line-height: 1.2;
     text-shadow:
             0 3px 0 var(--pop-ink),
             2px 2px 0 var(--pop-ink),
@@ -1153,136 +1162,155 @@ canvas {
   }
 
   .pop-subtitle {
-    font-size: 11.5px;
-    line-height: 1.45;
+    font-size: clamp(11.5px, 3.2vw, 13px);
+    line-height: 1.5;
   }
 
   .pop-two-col,
   .pop-grid-3 {
     grid-template-columns: 1fr;
-    gap: 8px;
+    gap: 9px;
   }
 
   .pop-grid-2 {
     grid-template-columns: 1fr 1fr;
-    gap: 8px;
+    gap: 9px;
   }
 
-  .pop-col,
-  .pop-body {
-    gap: 8px;
+  .pop-col {
+    gap: 9px;
   }
 
   .pop-row {
-    padding: 9px 11px;
-    gap: 8px;
-    border-radius: 14px;
+    padding: 10px 12px;
+    gap: 10px;
+    border-radius: 15px;
     border-width: 2.5px;
     box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.2), 0 3px 0 var(--pop-ink);
   }
 
   .pop-sticker {
-    width: 34px;
-    height: 34px;
-    border-radius: 10px;
+    width: 38px;
+    height: 38px;
+    border-radius: 11px;
     border-width: 2.5px;
     box-shadow: 0 2px 0 var(--pop-ink);
   }
 
   .pop-label {
-    font-size: 13.5px;
+    font-size: 14px;
+    line-height: 1.3;
   }
 
   .pop-sublabel {
-    font-size: 11px;
-    line-height: 1.4;
+    font-size: 11.5px;
+    line-height: 1.5;
   }
 
+  /* استاندارد لمس برای دکمه‌ها و تب‌ها */
   .pop-pill {
-    min-width: 88px;
-    padding: 8px 13px;
-    font-size: 12.5px;
+    min-width: 92px;
+    min-height: 40px;
+    padding: 8px 14px;
+    font-size: 13px;
     border-width: 2.5px;
   }
 
   .pop-pill.is-sm {
-    padding: 6px 11px;
+    min-height: 34px;
+    padding: 6px 12px;
     font-size: 12px;
   }
 
   .pop-pill.is-full {
+    min-height: 48px;
     padding: 12px 16px;
     font-size: 15px;
   }
 
+  .pop-tab {
+    min-height: 40px;
+    font-size: 13px;
+    padding: 8px 12px;
+  }
+
+  .pop-quick-btn {
+    min-height: 76px;
+    padding: 10px 6px;
+    font-size: 12px;
+    gap: 5px;
+  }
+
   .pop-slider {
-    gap: 4px;
+    gap: 5px;
   }
 
   .pop-slider-seg {
-    width: 19px;
-    height: 9px;
+    width: 22px;
+    height: 11px;
   }
 
   .pop-slider-seg.is-knob::after {
-    width: 20px;
-    height: 20px;
-    right: -10px;
+    width: 22px;
+    height: 22px;
+    right: -11px;
   }
 
   .pop-slider-zero {
-    width: 20px;
-    height: 20px;
+    width: 24px;
+    height: 24px;
   }
 
   .pop-card {
     min-height: auto;
-    padding: 11px 12px;
-    gap: 8px;
-    border-radius: 15px;
+    padding: 12px 13px;
+    gap: 9px;
+    border-radius: 16px;
     border-width: 3px;
     box-shadow: inset 0 -3px 0 #e2e8f0, 0 4px 0 var(--pop-ink);
   }
 
   .pop-card .pop-label {
-    font-size: 14px;
+    font-size: 14.5px;
   }
 
   .pop-card .pop-sublabel {
-    font-size: 11.5px;
-    line-height: 1.45;
+    font-size: 12px;
+    line-height: 1.5;
   }
 
   .pop-input {
-    width: 145px;
-    padding: 7px 10px;
-    font-size: 13px;
+    width: 155px;
+    min-height: 40px;
+    padding: 8px 12px;
+    font-size: 13.5px;
   }
 
   .pop-back-btn {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     border-width: 3px;
     top: max(12px, env(safe-area-inset-top));
     left: 12px;
     bottom: auto;
   }
 
+  /* بهینه‌سازی HUD بالا در موبایل */
   #game-hud-wrap {
-    top: max(5px, env(safe-area-inset-top));
-    left: 8px;
-    right: 8px;
-    gap: 4px;
+    top: max(6px, env(safe-area-inset-top));
+    left: 10px;
+    right: 10px;
+    gap: 5px;
   }
 
   .hud-top-bar {
-    gap: 4px;
+    gap: 6px;
   }
 
   .hud-stage-badge {
-    padding: 3px 8px;
-    font-size: 10.5px;
-    gap: 4px;
+    padding: 5px 10px;
+    font-size: 11.5px;
+    gap: 5px;
   }
 
   .hud-island-chip {
@@ -1290,64 +1318,68 @@ canvas {
   }
 
   .hud-hero-timer {
-    min-width: 68px;
-    padding: 4px 11px 6px;
+    min-width: 74px;
+    padding: 5px 13px 7px;
     gap: 5px;
   }
 
   .hud-timer-num {
-    font-size: 16.5px;
+    font-size: 18px;
   }
 
   .hud-icon-btn {
-    width: 34px;
-    height: 34px;
+    width: 42px;
+    height: 42px;
   }
 
   .hud-sub-bar {
     flex-direction: column;
     align-items: center;
-    gap: 4px;
+    gap: 5px;
   }
 
   .hud-stat-card {
-    padding: 3px 8px;
-    gap: 4px;
+    padding: 4px 10px;
+    gap: 5px;
   }
 
   .hud-stat-value {
-    font-size: 12.5px;
+    font-size: 13px;
   }
 
   #mission-pill {
-    padding: 3px 10px;
-    font-size: 10.5px;
-    max-width: 92vw;
+    padding: 4px 11px;
+    font-size: 11px;
+    max-width: 94vw;
   }
 
   #edge-decree-pill {
-    max-width: 92vw;
-    font-size: 10.5px;
-    padding: 4px 10px;
+    max-width: 94vw;
+    font-size: 11px;
+    padding: 5px 11px;
+    text-align: center;
+    justify-content: center;
   }
 
   #boss-hud {
-    width: min(92vw, 270px);
-    padding: 4px 10px 5px;
+    width: min(92vw, 290px);
+    padding: 5px 11px 6px;
   }
 
   .game-toast-banner {
-    bottom: calc(64px + env(safe-area-inset-bottom));
-    font-size: 11.5px;
-    padding: 6px 12px;
+    bottom: calc(76px + env(safe-area-inset-bottom));
+    font-size: 12px;
+    padding: 7px 13px;
+    max-width: 92vw;
   }
 
+  /* داک پایین در ناحیه دسترسی راحت شست */
   #hud-bottom-dock {
-    bottom: max(8px, env(safe-area-inset-bottom));
-    width: calc(100vw - 16px);
-    max-width: 400px;
-    padding: 6px 9px;
-    gap: 6px;
+    bottom: max(10px, env(safe-area-inset-bottom));
+    width: calc(100vw - 20px);
+    max-width: 420px;
+    padding: 7px 10px;
+    gap: 8px;
     justify-content: space-between;
   }
 
@@ -1356,55 +1388,81 @@ canvas {
     width: auto;
     min-width: 0;
     padding: 0 3px;
-    gap: 2px;
+    gap: 3px;
   }
 
   .hud-gauge-header {
-    font-size: 9.5px;
+    font-size: 10.5px;
   }
 
   .hud-gauge {
-    height: 7px;
+    height: 8px;
   }
 
   .hay-action-btn {
-    padding: 7px 11px;
-    font-size: 12px;
+    min-height: 42px;
+    padding: 8px 13px;
+    font-size: 12.5px;
     gap: 5px;
     flex-shrink: 0;
   }
 
   .countdown-num {
-    font-size: 86px;
+    font-size: 88px;
   }
 
   .countdown-caption {
+    font-size: 12.5px;
+    padding: 6px 14px;
+  }
+}
+
+/* گوشی‌های کوچک و باریک (عرض زیر ۴۰۰ پیکسل) */
+@media (max-width: 400px) {
+  .pop-row {
+    flex-wrap: wrap;
+  }
+
+  .pop-input {
+    width: 100%;
+  }
+
+  .pop-grid-2 {
+    grid-template-columns: 1fr;
+  }
+
+  .hud-stage-badge {
+    font-size: 10.5px;
+    padding: 4px 8px;
+  }
+
+  .hay-action-btn {
+    padding: 8px 10px;
     font-size: 12px;
-    padding: 5px 13px;
   }
 }
 
 .card-benefit-line {
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 800;
   color: #14532d;
   background: #dcfce7;
   border: 1.5px solid #16a34a;
   border-radius: 9px;
-  padding: 4px 7px;
-  line-height: 1.45;
+  padding: 5px 8px;
+  line-height: 1.5;
   margin-bottom: 5px;
 }
 
 .card-cost-line {
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 800;
   color: #881337;
   background: #ffe4e6;
   border: 1.5px solid #f43f5e;
   border-radius: 9px;
-  padding: 4px 7px;
-  line-height: 1.45;
+  padding: 5px 8px;
+  line-height: 1.5;
 }
 
 .boss-milestone-banner {

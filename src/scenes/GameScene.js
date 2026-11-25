@@ -668,11 +668,17 @@ export class GameScene extends Phaser.Scene {
             if (!this.cameras || !this.cameras.main) return;
             const cam = this.cameras.main;
             const isPortrait = height > width;
-            const viewW = isPortrait ? 680 : 790;
-            const viewH = isPortrait ? 930 : 815;
+            const aspect = height / Math.max(1, width);
+
+            // در موبایل عمودی، فضای کافی برای HUD بالا و داک پایین در نظر گرفته می‌شود
+            const viewW = isPortrait ? 690 : 790;
+            const viewH = isPortrait ? (aspect > 1.85 ? 980 : 940) : 815;
             const zoom = Math.min(width / viewW, height / viewH);
             cam.setZoom(zoom);
-            cam.centerOn(0, isPortrait ? -28 : -24);
+
+            // جابه‌جایی ملایم مرکز دوربین به سمت بالا تا جزیره و سر کراکن زیر HUD نروند
+            const offsetY = isPortrait ? (aspect > 1.85 ? -44 : -36) : -24;
+            cam.centerOn(0, offsetY);
         };
         updateCamera(this.scale.width, this.scale.height);
         this._onResize = (gameSize) => updateCamera(gameSize.width, gameSize.height);

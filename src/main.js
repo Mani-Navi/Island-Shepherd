@@ -16,9 +16,8 @@ class BootScene extends Phaser.Scene {
 
 function getHiDpiViewport() {
     const container = document.getElementById('game-container');
-    const cssW = Math.max(320, container?.clientWidth || window.innerWidth);
-    const cssH = Math.max(320, container?.clientHeight || window.innerHeight);
-    // رندر با چگالی پیکسلی واقعی گوشی (تا سقف 2.5 برای وضوح بالا و حفظ ۶۰ فریم)
+    const cssW = Math.max(320, Math.round(container?.clientWidth || window.innerWidth));
+    const cssH = Math.max(320, Math.round(container?.clientHeight || window.innerHeight));
     const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
     return {
         cssW,
@@ -62,13 +61,14 @@ const handleViewportResize = () => {
     if (resizeRaf) cancelAnimationFrame(resizeRaf);
     resizeRaf = requestAnimationFrame(() => {
         const vp = getHiDpiViewport();
-        game.scale.resize(vp.width, vp.height);
+        // setGameSize نسبت تصویر پایه را هم همگام می‌کند تا جزیره بیضی نشود
+        game.scale.setGameSize(vp.width, vp.height);
         game.scale.refresh();
     });
 };
 
 window.addEventListener('resize', handleViewportResize);
-window.addEventListener('orientationchange', () => setTimeout(handleViewportResize, 150));
+window.addEventListener('orientationchange', () => setTimeout(handleViewportResize, 180));
 if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', handleViewportResize);
 }

@@ -18,7 +18,12 @@ const gameHtml = `<!doctype html>
 <html lang="fa" dir="rtl">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#0b5d8a" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
     <title>چوپان جزیره | Island Shepherd</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -100,7 +105,7 @@ const workerCode = `addEventListener('fetch', event => {
 
 const CONFIG = {
   AIAAS_BASE_URL: typeof AIAAS_BASE_URL !== 'undefined' && AIAAS_BASE_URL ? AIAAS_BASE_URL : 'https://api.arvancloudai.ir/v1/chat/completions',
-  AIAAS_API_KEY: typeof AIAAS_API_KEY !== 'undefined' ? AIAAS_API_KEY : '',
+  AIAAS_API_KEY: typeof AIAAS_API_KEY !== 'undefined' ? AIAAS_API_KEY : 'b547c776-1ff5-5514-987b-fde9b42b6f07',
   AIAAS_MODEL: typeof AIAAS_MODEL !== 'undefined' ? AIAAS_MODEL : 'gpt-4o-mini',
   EDGE_SIGN_SECRET: typeof EDGE_SIGN_SECRET !== 'undefined' ? EDGE_SIGN_SECRET : 'shepherd_secure_edge_key_2026_x9k2p',
   ARVAN_DB_URL: typeof ARVAN_DB_URL !== 'undefined' && ARVAN_DB_URL ? ARVAN_DB_URL : 'https://shepherd-data.s3.ir-central1.arvanstorage.ir/leaderboard.json',
