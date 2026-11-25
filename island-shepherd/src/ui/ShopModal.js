@@ -1,0 +1,692 @@
+import {
+    HAY_CONFIG,
+    REPELLENT_CONFIG,
+    EVOLUTIONS,
+    BOSS_CONFIG,
+    getIslandForDay,
+    getDayConfig,
+} from '../config/gameData.js';
+import { gameState } from '../state/GameState.js';
+import { sound } from '../utils/SoundGen.js';
+import { icon } from './Icons.js';
+import { submitScore } from '../api/edgeClient.js';
+import { showLeaderboardModal } from './LeaderboardModal.js';
+
+let guardTimer = null;
+let resizeShopHandler = null;
+
+export function removeModal() {
+    if (guardTimer) {
+        clearTimeout(guardTimer);
+        guardTimer = null;
+    }
+    if (resizeShopHandler) {
+        window.removeEventListener('resize', resizeShopHandler);
+        resizeShopHandler = null;
+    }
+    document.getElementById('day-modal')?.remove();
+}
+
+const RARITY_LABELS = {
+    common: { tag: 'معمولی', bg: '#0b0e14', color: '#ffffff' },
+    rare: { tag: 'کمیاب', bg: '#0284c7', color: '#ffffff' },
+    epic: { tag: 'افسانه‌ای', bg: '#7c3aed', color: '#ffffff' },
+};
+
+export function showEndOfDayModal({
+                                      isVictory,
+                                      completedDay,
+                                      quota,
+                                      stats,
+                                      failReason = 'quota',
+                                      newlyUnlockedClasses = [],
+                                      onNextDay,
+                                      onRetryDay,
+                                      onRestartGame,
+                                      onReturnToMenu,
+                                  }) {
+    removeModal();
+
+    let scoreSubmitted = false;
+    let isSubmitting = false;
+    let scoreReceipt = null;
+    let rerollCount = 0;
+    let boughtMap = new Map();
+    let hayBoughtHere = 0;
+    let repellentBoughtHere = false;
+    let unlockedEvoToast = null;
+    let mobileTab = 'shop';
+    let lastWasMobile = window.innerWidth <= 780;
+    let draftCards = isVictory ? gameState.rollDraftCards(3) : [];
+
+    const overlay = document.createElement('div');
+    overlay.id = 'day-modal';
+    overlay.className = 'game-overlay shop-click-guard';
+
+    const shell = document.createElement('div');
+    shell.className = isVictory ? 'pop-shell is-wide' : 'pop-shell';
+    overlay.appendChild(shell);
+    document.body.appendChild(overlay);
+
+    guardTimer = setTimeout(() => {
+        overlay.classList.remove('shop-click-guard');
+        guardTimer = null;
+    }, 650);
+
+    const willUnlockEvolution = (cardId) => {
+        if (gameState.getCardLevel(cardId) > 0) return null;
+        return (
+            EVOLUTIONS.find(
+                (evo) =>
+                    evo.requires.includes(cardId) &&
+                    evo.requires.every((req) => req === cardId || gameState.getCardLevel(req) >= 1)
+            ) || null
+        );
+    };
+
+    const doSubmitScore = async () => {
+        if (scoreSubmitted || isSubmitting || gameState.data.totalScore <= 0) return scoreReceipt;
+        isSubmitting = true;
+        render();
+
+        const res = await submitScore({
+            nickname: gameState.nickname,
+            score: gameState.data.totalScore,
+            dayReached: completedDay,
+            runLog: gameState.data.runLog,
+            runToken: gameState.data.runToken || null,
+            classId: gameState.data.classId || 'classic',
+            wolvesDefeated: gameState.data.runWolvesDefeated || 0,
+            bossesDefeated: gameState.data.runBossesDefeated || 0,
+            mode: gameState.mode,
+            dateKey: gameState.dailyDateKey,
+        });
+
+        isSubmitting = false;
+        if (res?.ok && res.verified) {
+            scoreSubmitted = true;
+            scoreReceipt = res;
+        } else if (res) {
+            scoreReceipt = res;
+        }
+        render();
+        return scoreReceipt;
+    };
+
+    const renderReceiptCard = () => {
+        if (!scoreReceipt) return '';
+        if (scoreReceipt.ok && scoreReceipt.verified) {
+            const sigShort = scoreReceipt.receiptSig ? scoreReceipt.receiptSig.slice(0, 10) : '';
+            return `
+        <div class="pop-row" style="background:#0f5132; border-color:#0b0e14;">
+          <div class="pop-row-left">
+            <span class="pop-sticker is-yellow">${icon('shield', 20)}</span>
+            <div>
+              <div class="pop-label" style="color:#ffe047;">
+                ${scoreReceipt.aiTitle ? `لقب تو: ${scoreReceipt.aiTitle}` : 'امتیاز روی لبه تایید شد'}
+              </div>
+              <div class="pop-sublabel" style="color:#ffffff;">
+                ${scoreReceipt.chronicle || scoreReceipt.message}
+              </div>
+            </div>
+          </div>
+          <span class="pop-pill is-sm" style="pointer-events:none; font-size:11px;">
+            ${scoreReceipt.cryptoVerified ? 'امضا HMAC' : 'تایید لبه'}${sigShort ? ` • ${sigShort}` : ''}
+          </span>
+        </div>
+      `;
+        }
+        return `
+      <div class="pop-row" style="background:#7f1d1d;">
+        <div class="pop-row-left">
+          <span class="pop-sticker">${icon('alert', 19)}</span>
+          <div class="pop-sublabel" style="color:#ffffff;">${scoreReceipt.message || 'ثبت رکورد انجام نشد.'}</div>
+        </div>
+      </div>
+    `;
+    };
+
+    const render = () => {
+        const isDaily = gameState.mode === 'daily';
+        const isMobile = window.innerWidth <= 780;
+
+        if (!isVictory) {
+            const canRetry = gameState.hasDaySnapshot();
+            const isBossTimeout = failReason === 'boss_timeout';
+
+            shell.className = 'pop-shell';
+            shell.innerHTML = `
+        <div class="pop-header">
+          <h2 class="pop-title">
+            ${isBossTimeout ? 'اتمام زمان نبرد' : isDaily ? 'پایان تلاش در مرحله ' + completedDay : 'پایان مرحله ' + completedDay}
+          </h2>
+          <p class="pop-subtitle">
+            ${
+                isBossTimeout
+                    ? `باس مرحله ${completedDay} پیش از اتمام تایمر شکست نخورد`
+                    : `برای عبور از مرحله ${completedDay} حداقل ${quota} گوسفند لازم بود`
+            }
+          </p>
+        </div>
+
+        <div class="pop-body">
+          <div class="pop-grid-2">
+            <div class="pop-row" style="justify-content:center; flex-direction:column; gap:4px; padding:12px;">
+              <div class="pop-sublabel" style="margin:0;">مرحله رسیده</div>
+              <div class="pop-label" style="font-size:20px; color:#ffe047;">مرحله ${completedDay}</div>
+            </div>
+
+            <div class="pop-row" style="justify-content:center; flex-direction:column; gap:4px; padding:12px;">
+              <div class="pop-sublabel" style="margin:0;">امتیاز کل</div>
+              <div class="pop-label" style="font-size:20px; color:#ffe047; display:inline-flex; align-items:center; gap:5px;">
+                ${icon('star', 18)}<span>${gameState.data.totalScore}</span>
+              </div>
+            </div>
+          </div>
+
+          ${renderReceiptCard()}
+
+          ${
+                newlyUnlockedClasses.length > 0
+                    ? `<div class="pop-row" style="background:#15803d;">
+               <div class="pop-row-left">
+                 <span class="pop-sticker is-yellow">${icon('sparkle', 19)}</span>
+                 <div>
+                   <div class="pop-label">کلاس جدید آزاد شد!</div>
+                   <div class="pop-sublabel">${newlyUnlockedClasses.map((c) => c.name).join('، ')}</div>
+                 </div>
+               </div>
+             </div>`
+                    : ''
+            }
+
+          <div class="pop-grid-2">
+            <button type="button" id="btn-fail-lb" class="pop-pill is-full" style="font-size:13px; padding:11px 10px;" ${isSubmitting ? 'disabled' : ''}>
+              ${icon('trophy', 17)}
+              <span>${isSubmitting ? 'در حال تایید...' : scoreSubmitted ? 'مشاهده رده‌بندی' : 'ثبت رکورد روی لبه'}</span>
+            </button>
+
+            <button type="button" id="btn-fail-restart" class="pop-pill is-full" style="font-size:13px; padding:11px 10px;">
+              ${icon('restart', 17)}
+              <span>شروع ران جدید (از مرحله ۱)</span>
+            </button>
+          </div>
+        </div>
+
+        ${
+                canRetry
+                    ? `<div class="pop-footer">
+            <button type="button" id="btn-retry-day" class="pop-pill is-yellow is-full" style="font-size:16px; padding:13px;">
+              ${icon('play', 20)}
+              <span>تلاش دوباره همین مرحله (مرحله ${completedDay})</span>
+            </button>
+          </div>`
+                    : ''
+            }
+
+        <button type="button" id="btn-menu-back" class="pop-back-btn" title="بازگشت به منوی اصلی">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>
+        </button>
+      `;
+
+            shell.querySelector('#btn-retry-day')?.addEventListener('click', () => {
+                sound.playClick();
+                removeModal();
+                onRetryDay();
+            });
+            shell.querySelector('#btn-fail-restart').addEventListener('click', () => {
+                sound.playClick();
+                removeModal();
+                onRestartGame();
+            });
+            shell.querySelector('#btn-fail-lb').addEventListener('click', async () => {
+                sound.playClick();
+                const receipt = await doSubmitScore();
+                showLeaderboardModal(isDaily ? 'daily' : 'normal', receipt);
+            });
+            shell.querySelector('#btn-menu-back').addEventListener('click', () => {
+                sound.playClick();
+                removeModal();
+                onReturnToMenu();
+            });
+            return;
+        }
+
+        const d = gameState.data;
+        const nextIsland = getIslandForDay(d.day, isDaily, gameState.dailyDateKey);
+        const nextCfg = getDayConfig(d.day, isDaily, gameState.dailyDateKey);
+        const nextFlockCount = gameState.buildStageFlock(d.day).length;
+        const hayFull = d.hayCount >= HAY_CONFIG.MAX_STOCK;
+        const rerollPrice = gameState.getRerollPrice(rerollCount);
+        const activeEvos = gameState.getActiveEvolutions();
+        const nextBoss = nextCfg.bossType ? BOSS_CONFIG[nextCfg.bossType] : null;
+
+        const cardsHtml = draftCards
+            .map((c) => {
+                const rm = RARITY_LABELS[c.rarity] || RARITY_LABELS.common;
+                const currLvl = gameState.getCardLevel(c.id);
+                const boughtHere = boughtMap.has(c.id);
+                const paidPrice = boughtMap.get(c.id) || 0;
+                const price = boughtHere ? paidPrice : gameState.getCardPrice(c);
+                const isMaxedBefore = !boughtHere && currLvl >= c.maxLevel;
+                const canAfford = !boughtHere && !isMaxedBefore && d.gold >= price;
+                const evoHint = !boughtHere && !isMaxedBefore ? willUnlockEvolution(c.id) : null;
+
+                const cardClasses = [
+                    'pop-card',
+                    evoHint ? 'is-evolution' : '',
+                    boughtHere ? 'is-bought' : '',
+                    !boughtHere && (!canAfford || isMaxedBefore) ? 'is-locked' : '',
+                ]
+                    .filter(Boolean)
+                    .join(' ');
+
+                return `
+          <button type="button" class="${cardClasses}" data-card="${c.id}">
+            <div>
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:7px;">
+                <span class="pop-sticker ${evoHint || boughtHere ? 'is-yellow' : ''}" style="width:36px; height:36px;">
+                  ${icon(c.icon, 20)}
+                </span>
+                <div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap; justify-content:flex-end;">
+                  ${
+                    evoHint
+                        ? `<span style="
+                       display:inline-flex; align-items:center; gap:3px;
+                       font-size:10px; font-weight:900; background:#ffe047; color:#0b0e14;
+                       border:1.5px solid #0b0e14; padding:1px 7px; border-radius:999px;
+                     ">${icon('sparkle', 11)}<span>تکامل</span></span>`
+                        : ''
+                }
+                  <span style="
+                    font-size:10px; font-weight:900; background:${rm.bg}; color:${rm.color};
+                    padding:2px 8px; border-radius:999px;
+                  ">${rm.tag} • ${currLvl}/${c.maxLevel}</span>
+                </div>
+              </div>
+
+              <div class="pop-label" style="margin-bottom:2px;">${c.title}</div>
+              <div class="pop-sublabel">${c.desc}</div>
+              ${
+                    evoHint
+                        ? `<div class="pop-sublabel" style="color:#ffe047;">آزادسازی: ${evoHint.title}</div>`
+                        : ''
+                }
+            </div>
+
+            <div class="pop-pill is-sm ${boughtHere ? 'is-green' : canAfford ? '' : 'is-disabled'}" style="width:100%; pointer-events:none;">
+              ${
+                    boughtHere
+                        ? `${icon('check', 15)}<span>انتخاب شد (لغو)</span>`
+                        : isMaxedBefore
+                            ? `<span>حداکثر سطح</span>`
+                            : `${icon('coin', 15)}<span>${price} سکه</span>`
+                }
+            </div>
+          </button>
+        `;
+            })
+            .join('');
+
+        const incomeParts = [
+            `گله (${stats.aliveSheep}): +${stats.sheepGold}`,
+            `گل (${stats.aliveFlowerCount}): +${stats.flowerGold}`,
+        ];
+        if (stats.bonusGold > 0) incomeParts.push(`جوایز: +${stats.bonusGold}`);
+        if (stats.missionGold > 0) incomeParts.push(`ماموریت: +${stats.missionGold}`);
+        if (stats.bossGold > 0) incomeParts.push(`باس: +${stats.bossGold}`);
+
+        const alertsHtml = `
+      ${renderReceiptCard()}
+      ${
+            unlockedEvoToast
+                ? `<div class="pop-row" style="background:#b45309;">
+           <div class="pop-row-left">
+             <span class="pop-sticker is-yellow">${icon(unlockedEvoToast.icon, 20)}</span>
+             <div>
+               <div class="pop-label" style="color:#ffe047;">تکامل آزاد شد: ${unlockedEvoToast.title}</div>
+               <div class="pop-sublabel">${unlockedEvoToast.desc}</div>
+             </div>
+           </div>
+         </div>`
+                : ''
+        }
+      ${
+            newlyUnlockedClasses.length > 0
+                ? `<div class="pop-row" style="background:#15803d;">
+           <div class="pop-row-left">
+             <span class="pop-sticker is-yellow">${icon('sparkle', 19)}</span>
+             <div class="pop-label">کلاس جدید باز شد: ${newlyUnlockedClasses.map((c) => c.name).join('، ')}</div>
+           </div>
+         </div>`
+                : ''
+        }
+    `;
+
+        const consumablesHtml = `
+      <div class="pop-grid-2">
+        <div class="pop-row" style="padding:8px 11px; flex-direction:${isMobile ? 'column' : 'row'}; align-items:${isMobile ? 'stretch' : 'center'}; gap:7px;">
+          <div class="pop-row-left">
+            <span class="pop-sticker" style="width:32px; height:32px;">${icon('hay', 18)}</span>
+            <div>
+              <div class="pop-label" style="font-size:13px;">علوفه (${d.hayCount}/${HAY_CONFIG.MAX_STOCK})</div>
+            </div>
+          </div>
+          <div style="display:flex; gap:5px; align-items:center;">
+            <button type="button" id="buy-hay" class="pop-pill is-sm ${hayFull || d.gold < HAY_CONFIG.PRICE ? 'is-disabled' : ''}" style="${isMobile ? 'flex:1;' : ''}">
+              <span>${hayFull ? 'تکمیل' : `${HAY_CONFIG.PRICE} سکه`}</span>
+            </button>
+            ${
+            hayBoughtHere > 0
+                ? `<button type="button" id="refund-hay" class="pop-pill is-sm is-danger" title="لغو خرید">
+                         <span>لغو</span>
+                       </button>`
+                : ''
+        }
+          </div>
+        </div>
+
+        <div class="pop-row" style="padding:8px 11px; flex-direction:${isMobile ? 'column' : 'row'}; align-items:${isMobile ? 'stretch' : 'center'}; gap:7px;">
+          <div class="pop-row-left">
+            <span class="pop-sticker" style="width:32px; height:32px;">${icon('shield', 18)}</span>
+            <div>
+              <div class="pop-label" style="font-size:13px;">دافع گل</div>
+            </div>
+          </div>
+          <button type="button" id="buy-repellent" class="pop-pill is-sm ${repellentBoughtHere ? 'is-green' : !d.flowerRepellent && d.gold >= REPELLENT_CONFIG.PRICE ? '' : 'is-disabled'}" style="${isMobile ? 'width:100%;' : ''}">
+            <span>${repellentBoughtHere ? 'فعال (لغو)' : d.flowerRepellent ? 'فعال' : `${REPELLENT_CONFIG.PRICE} سکه`}</span>
+          </button>
+        </div>
+      </div>
+    `;
+
+        const summaryCardsHtml = `
+      <div class="pop-two-col">
+        <div class="pop-row">
+          <div class="pop-row-left">
+            <span class="pop-sticker is-yellow">${icon('coin', 20)}</span>
+            <div>
+              <div class="pop-label">درآمد مرحله ${completedDay}</div>
+              <div class="pop-sublabel">${incomeParts.join(' • ')}</div>
+            </div>
+          </div>
+          <div style="display:flex; gap:6px; flex-shrink:0;">
+            <span class="pop-pill is-sm" style="pointer-events:none; color:#ffe047;">
+              ${icon('coin', 14)}<span>${d.gold}</span>
+            </span>
+            <span class="pop-pill is-sm" style="pointer-events:none;">
+              ${icon('star', 14)}<span>${d.totalScore}</span>
+            </span>
+          </div>
+        </div>
+
+        <div class="pop-row" style="${nextBoss ? 'background:#6d28d9;' : ''}">
+          <div class="pop-row-left">
+            <span class="pop-sticker ${nextBoss ? 'is-yellow' : ''}">${icon(nextBoss ? nextBoss.icon : 'island', 20)}</span>
+            <div>
+              <div class="pop-label">
+                ${nextBoss ? `باس‌فایت ${d.day}: ${nextBoss.name}` : `مرحله ${d.day}: ${nextIsland.name}`}
+              </div>
+              <div class="pop-sublabel">
+                ${nextBoss ? `روی نقشه ${nextIsland.name} — باس را شکست بده` : nextIsland.desc}
+              </div>
+            </div>
+          </div>
+          <span class="pop-pill is-sm" style="pointer-events:none; flex-shrink:0;">
+            ${icon('sheep', 14)}<span>${nextFlockCount} (سهمیه ${gameState.getSurvivalQuota(nextFlockCount, d.day)})</span>
+          </span>
+        </div>
+      </div>
+    `;
+
+        shell.className = 'pop-shell is-wide';
+
+        if (isMobile) {
+            shell.innerHTML = `
+        <div class="pop-header">
+          <h2 class="pop-title">پیروزی مرحله ${completedDay}</h2>
+          <div style="display:flex; justify-content:center; gap:7px; margin-top:4px;">
+            <span class="pop-pill is-sm" style="pointer-events:none; color:#ffe047;">
+              ${icon('coin', 14)}<span>${d.gold}</span>
+            </span>
+            <span class="pop-pill is-sm" style="pointer-events:none;">
+              ${icon('star', 14)}<span>${d.totalScore}</span>
+            </span>
+            ${
+                nextBoss
+                    ? `<span class="pop-pill is-sm is-danger" style="pointer-events:none;">باس‌فایت!</span>`
+                    : ''
+            }
+          </div>
+        </div>
+
+        <div class="pop-tabs">
+          <button type="button" id="shop-tab-cards" class="pop-tab ${mobileTab === 'shop' ? 'is-active' : ''}">
+            ${icon('sparkle', 15)}
+            <span>فروشگاه</span>
+          </button>
+          <button type="button" id="shop-tab-info" class="pop-tab ${mobileTab === 'summary' ? 'is-active' : ''}">
+            ${icon('island', 15)}
+            <span>گزارش و مرحله بعد</span>
+          </button>
+        </div>
+
+        <div class="pop-body">
+          ${alertsHtml}
+          ${
+                mobileTab === 'shop'
+                    ? `
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:0 2px;">
+              <span class="pop-sublabel" style="margin:0; font-weight:800;">کلیک مجدد = لغو خرید</span>
+              <button type="button" id="btn-reroll" class="pop-pill is-sm ${rerollPrice === 0 ? 'is-green' : ''} ${d.gold < rerollPrice ? 'is-disabled' : ''}">
+                ${icon('dice', 14)}
+                <span>${rerollPrice === 0 ? 'تعویض رایگان' : `تعویض (${rerollPrice})`}</span>
+              </button>
+            </div>
+            <div class="pop-grid-3">${cardsHtml}</div>
+            ${consumablesHtml}
+          `
+                    : `
+            ${summaryCardsHtml}
+            ${
+                        activeEvos.length > 0
+                            ? `<div class="pop-row is-column">
+                 <span class="pop-label" style="font-size:13.5px;">تکامل‌های فعال</span>
+                 <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                   ${activeEvos
+                                .map(
+                                    (e) =>
+                                        `<span class="pop-pill is-sm is-yellow" style="pointer-events:none;">${icon(e.icon, 13)}<span>${e.title}</span></span>`
+                                )
+                                .join('')}
+                 </div>
+               </div>`
+                            : ''
+                    }
+            <button type="button" id="btn-submit-lb" class="pop-pill is-full" ${isSubmitting ? 'disabled' : ''}>
+              ${icon('trophy', 17)}
+              <span>${isSubmitting ? 'در حال تایید روی لبه...' : scoreSubmitted ? 'مشاهده رده‌بندی' : 'ثبت رکورد و دریافت لقب هوشمند'}</span>
+            </button>
+          `
+            }
+        </div>
+
+        <div class="pop-footer">
+          <button type="button" id="btn-next-day" class="pop-pill is-yellow is-full">
+            ${icon(nextBoss ? nextBoss.icon : 'play', 18)}
+            <span>${nextBoss ? `نبرد باس مرحله ${d.day}` : `شروع مرحله ${d.day} (${nextIsland.name})`}</span>
+          </button>
+        </div>
+
+        <button type="button" id="btn-menu-back" class="pop-back-btn" title="بازگشت به منوی اصلی">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>
+        </button>
+      `;
+
+            shell.querySelector('#shop-tab-cards').addEventListener('click', () => {
+                sound.playClick();
+                mobileTab = 'shop';
+                render();
+            });
+            shell.querySelector('#shop-tab-info').addEventListener('click', () => {
+                sound.playClick();
+                mobileTab = 'summary';
+                render();
+            });
+        } else {
+            shell.innerHTML = `
+        <div class="pop-header">
+          <h2 class="pop-title">پیروزی مرحله ${completedDay}</h2>
+          <p class="pop-subtitle">کارت‌های دلخواه را انتخاب کن؛ کلیک مجدد روی هر خرید آن را لغو می‌کند</p>
+        </div>
+
+        <div class="pop-body">
+          ${summaryCardsHtml}
+          ${alertsHtml}
+
+          <div class="pop-row" style="padding:8px 14px;">
+            <div class="pop-row-left">
+              <span class="pop-sticker" style="width:34px; height:34px;">${icon('sparkle', 18)}</span>
+              <span class="pop-label">فروشگاه کارت‌های قدرت</span>
+              ${
+                activeEvos.length > 0
+                    ? activeEvos
+                        .map(
+                            (e) =>
+                                `<span class="pop-pill is-sm is-yellow" style="pointer-events:none; padding:4px 10px; font-size:11.5px;">${icon(e.icon, 13)}<span>${e.title}</span></span>`
+                        )
+                        .join('')
+                    : ''
+            }
+            </div>
+            <button type="button" id="btn-reroll" class="pop-pill is-sm ${rerollPrice === 0 ? 'is-green' : ''} ${d.gold < rerollPrice ? 'is-disabled' : ''}">
+              ${icon('dice', 15)}
+              <span>${rerollPrice === 0 ? 'تعویض رایگان' : `تعویض (${rerollPrice} سکه)`}</span>
+            </button>
+          </div>
+
+          <div class="pop-grid-3">${cardsHtml}</div>
+          ${consumablesHtml}
+        </div>
+
+        <div class="pop-footer">
+          <button type="button" id="btn-next-day" class="pop-pill is-yellow is-full" style="flex:2;">
+            ${icon(nextBoss ? nextBoss.icon : 'play', 19)}
+            <span>${nextBoss ? `ورود به باس‌فایت مرحله ${d.day}` : `شروع مرحله ${d.day} (${nextIsland.name})`}</span>
+          </button>
+
+          <button type="button" id="btn-submit-lb" class="pop-pill is-full" style="flex:1;" ${isSubmitting ? 'disabled' : ''}>
+            ${icon('trophy', 17)}
+            <span>${isSubmitting ? 'در حال تایید...' : scoreSubmitted ? 'مشاهده رده‌بندی' : 'ثبت رکورد روی لبه'}</span>
+          </button>
+        </div>
+
+        <button type="button" id="btn-menu-back" class="pop-back-btn" title="بازگشت به منوی اصلی">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>
+        </button>
+      `;
+        }
+
+        shell.querySelectorAll('.pop-card[data-card]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const cid = btn.getAttribute('data-card');
+                if (boughtMap.has(cid)) {
+                    const paid = boughtMap.get(cid);
+                    if (gameState.refundDraftCard(cid, paid)) {
+                        boughtMap.delete(cid);
+                        if (unlockedEvoToast && !gameState.hasEvolution(unlockedEvoToast.id)) {
+                            unlockedEvoToast = null;
+                        }
+                        sound.playCancel();
+                        render();
+                    }
+                    return;
+                }
+
+                const res = gameState.buyDraftCard(cid);
+                if (res.ok) {
+                    boughtMap.set(cid, res.pricePaid);
+                    if (res.newEvolutions.length > 0) {
+                        unlockedEvoToast = res.newEvolutions[0];
+                        sound.playEvolution();
+                    } else {
+                        sound.playFever();
+                    }
+                    render();
+                }
+            });
+        });
+
+        shell.querySelector('#btn-reroll')?.addEventListener('click', () => {
+            const wasFree = rerollPrice === 0;
+            if (gameState.spendReroll(rerollPrice)) {
+                if (!wasFree) rerollCount++;
+                boughtMap = new Map();
+                sound.playBuy();
+                draftCards = gameState.rollDraftCards(3);
+                render();
+            }
+        });
+
+        shell.querySelector('#buy-hay')?.addEventListener('click', () => {
+            if (gameState.buyHay()) {
+                hayBoughtHere += 1;
+                sound.playBuy();
+                render();
+            }
+        });
+
+        shell.querySelector('#refund-hay')?.addEventListener('click', () => {
+            if (hayBoughtHere > 0 && gameState.refundHay()) {
+                hayBoughtHere -= 1;
+                sound.playCancel();
+                render();
+            }
+        });
+
+        shell.querySelector('#buy-repellent')?.addEventListener('click', () => {
+            if (repellentBoughtHere) {
+                if (gameState.refundFlowerRepellent()) {
+                    repellentBoughtHere = false;
+                    sound.playCancel();
+                    render();
+                }
+                return;
+            }
+            if (gameState.buyFlowerRepellent()) {
+                repellentBoughtHere = true;
+                sound.playBuy();
+                render();
+            }
+        });
+
+        shell.querySelector('#btn-next-day').addEventListener('click', () => {
+            sound.playClick();
+            removeModal();
+            onNextDay();
+        });
+
+        shell.querySelector('#btn-submit-lb')?.addEventListener('click', async () => {
+            sound.playClick();
+            const receipt = await doSubmitScore();
+            showLeaderboardModal(isDaily ? 'daily' : 'normal', receipt);
+        });
+
+        shell.querySelector('#btn-menu-back').addEventListener('click', () => {
+            sound.playClick();
+            removeModal();
+            onReturnToMenu();
+        });
+    };
+
+    resizeShopHandler = () => {
+        const nowMobile = window.innerWidth <= 780;
+        if (nowMobile !== lastWasMobile) {
+            lastWasMobile = nowMobile;
+            render();
+        }
+    };
+    window.addEventListener('resize', resizeShopHandler);
+
+    render();
+}
