@@ -19,10 +19,9 @@ const STORAGE_LABELS = {
     'edge-memory': 'لبه آروان‌کلاد',
 };
 
-export async function showLeaderboardModal(defaultTab = 'normal', lastReceipt = null) {
+export async function showLeaderboardModal(_defaultTab = 'normal', lastReceipt = null) {
     removeLeaderboardModal();
 
-    let activeTab = defaultTab === 'daily' ? 'daily' : 'normal';
     const todayKey = getTodayDateKey();
 
     const overlay = document.createElement('div');
@@ -66,17 +65,6 @@ export async function showLeaderboardModal(defaultTab = 'normal', lastReceipt = 
 
       <div id="lb-world-pulse" style="display:none;"></div>
 
-      <div class="pop-tabs">
-        <button type="button" id="tab-normal" class="pop-tab is-active">
-          ${icon('trophy', 17)}
-          <span>رده‌بندی کلی</span>
-        </button>
-        <button type="button" id="tab-daily" class="pop-tab">
-          ${icon('calendar', 16)}
-          <span>قهرمانان امروز</span>
-        </button>
-      </div>
-
       <div id="lb-list" class="pop-scroll-list"></div>
 
       <div class="pop-footer">
@@ -106,8 +94,6 @@ export async function showLeaderboardModal(defaultTab = 'normal', lastReceipt = 
     };
     window.addEventListener('keydown', lbEscHandler);
 
-    const tabNormal = overlay.querySelector('#tab-normal');
-    const tabDaily = overlay.querySelector('#tab-daily');
     const sub = overlay.querySelector('#lb-subtitle');
     const pulseEl = overlay.querySelector('#lb-world-pulse');
     const listEl = overlay.querySelector('#lb-list');
@@ -147,43 +133,34 @@ export async function showLeaderboardModal(defaultTab = 'normal', lastReceipt = 
     `;
     };
 
-    const loadTab = async (tab) => {
-        activeTab = tab;
-        tabNormal.classList.toggle('is-active', tab === 'normal');
-        tabDaily.classList.toggle('is-active', tab === 'daily');
+    const { items, pulse, storage, source } = await fetchLeaderboard('normal', todayKey);
+    if (!document.getElementById('lb-modal')) return;
 
-        sub.textContent = 'در حال دریافت از سرور آروان‌کلاد...';
-        listEl.innerHTML = '';
+    renderWorldPulse(pulse);
 
-        const { items, pulse, storage, source } = await fetchLeaderboard(tab, todayKey);
-        if (!document.getElementById('lb-modal') || activeTab !== tab) return;
+    const storageText = STORAGE_LABELS[storage] || 'لبه آروان‌کلاد';
+    if (source === 'edge') {
+        sub.textContent = `برترین چوپان‌های کل • ذخیره در ${storageText} • تاییدشده روی لبه`;
+    } else {
+        sub.textContent = 'برترین چوپان‌های کل • عدم اتصال به سرور آروان‌کلاد';
+    }
 
-        renderWorldPulse(pulse);
-
-        const modeText = tab === 'daily' ? `چالش روزانه (${todayKey})` : 'برترین چوپان‌های کل';
-        const storageText = STORAGE_LABELS[storage] || 'لبه آروان‌کلاد';
-        if (source === 'edge') {
-            sub.textContent = `${modeText} • ذخیره در ${storageText} • تاییدشده روی لبه`;
-        } else {
-            sub.textContent = `${modeText} • عدم اتصال به سرور آروان‌کلاد`;
-        }
-
-        if (source !== 'edge') {
-            listEl.innerHTML = `
+    if (source !== 'edge') {
+        listEl.innerHTML = `
         <div class="pop-row" style="justify-content:center; padding:26px; text-align:center;">
           <span class="pop-sublabel" style="font-size:13.5px;">
             اتصال به جدول آنلاین آروان‌کلاد برقرار نشد. در نسخه آنلاین تمام رکوردهای واقعی اینجا نمایش داده می‌شوند.
           </span>
         </div>
       `;
-            return;
-        }
+        return;
+    }
 
-        listEl.innerHTML = items.length
-            ? items
-                .slice(0, 12)
-                .map(
-                    (row, idx) => `
+    listEl.innerHTML = items.length
+        ? items
+            .slice(0, 12)
+            .map(
+                (row, idx) => `
         <div class="pop-row" style="${idx === 0 ? 'background:#0f74a8; border-color:#0b0e14;' : ''}">
           <div class="pop-row-left" style="align-items:flex-start;">
             ${renderRankSticker(idx)}
@@ -191,21 +168,21 @@ export async function showLeaderboardModal(defaultTab = 'normal', lastReceipt = 
               <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
                 <span class="pop-label">${escapeHtml(row.nickname)}</span>
                 ${
-                        row.aiTitle
-                            ? `<span style="
+                    row.aiTitle
+                        ? `<span style="
                              font-size:10.5px; font-weight:900; background:#ffe047; color:#0b0e14;
                              border:1.5px solid #0b0e14; padding:1px 8px; border-radius:999px;
                            ">${escapeHtml(row.aiTitle)}</span>`
-                            : ''
-                    }
+                        : ''
+                }
                 ${
-                        row.cryptoVerified
-                            ? `<span style="
+                    row.cryptoVerified
+                        ? `<span style="
                              font-size:10px; font-weight:900; background:#15803d; color:#ffffff;
                              padding:1px 7px; border-radius:999px;
                            ">امضای لبه</span>`
-                            : ''
-                    }
+                        : ''
+                }
               </div>
               <div class="pop-sublabel">
                 تا مرحله ${row.dayReached}${row.chronicle ? ` • ${escapeHtml(row.chronicle)}` : ''}
@@ -218,27 +195,15 @@ export async function showLeaderboardModal(defaultTab = 'normal', lastReceipt = 
           </span>
         </div>
       `
-                )
-                .join('')
-            : `
+            )
+            .join('')
+        : `
         <div class="pop-row" style="justify-content:center; padding:28px; text-align:center;">
           <span class="pop-sublabel" style="font-size:14px;">
             هنوز هیچ رکورد واقعی ثبت نشده؛ اولین نفری باش که اسمش و لقبش در جدول ثبت می‌شود!
           </span>
         </div>
       `;
-    };
-
-    tabNormal.addEventListener('click', () => {
-        sound.playClick();
-        loadTab('normal');
-    });
-    tabDaily.addEventListener('click', () => {
-        sound.playClick();
-        loadTab('daily');
-    });
-
-    loadTab(activeTab);
 }
 
 function escapeHtml(str) {

@@ -31,7 +31,12 @@ import {
     startEdgeRun,
 } from '../api/edgeClient.js';
 import { icon } from '../ui/Icons.js';
-import { showEndOfDayModal, removeModal } from '../ui/ShopModal.js';
+import {
+    showEndOfDayModal,
+    removeModal,
+    showMidStageShopModal,
+    removeMidStageShopModal,
+} from '../ui/ShopModal.js';
 import { showStartMenu, removeStartMenu } from '../ui/StartMenu.js';
 import {
     showDiscoveryModal,
@@ -51,7 +56,7 @@ export class GameScene extends Phaser.Scene {
         this.textResolution = Math.min(window.devicePixelRatio || 1, 2.5);
         this.dayCfg = getDayConfig(
             gameState.data.day,
-            gameState.mode === 'daily',
+            false,
             gameState.dailyDateKey,
             gameState.getWorldTier()
         );
@@ -102,6 +107,7 @@ export class GameScene extends Phaser.Scene {
         this.feverCharge = 0;
         this.feverTimer = 0;
         this.buoysLeft = gameState.getCardLevel('life_buoy');
+        this.flowerRepellentActive = gameState.consumeFlowerRepellent();
         this.midDayBonusGold = 0;
         this.bossBountyEarned = 0;
         this.bossMilestone = null;
@@ -137,6 +143,7 @@ export class GameScene extends Phaser.Scene {
         this.tutSheep = null;
 
         removeModal();
+        removeMidStageShopModal();
         removeStartMenu();
         removePauseModal();
         removeDiscoveryModal();
@@ -285,7 +292,7 @@ export class GameScene extends Phaser.Scene {
         showPauseModal({
             day: this.dayCfg.day,
             islandName: `${this.dayCfg.island.name} • ${this.season.name}`,
-            mode: gameState.mode,
+            mode: 'normal',
             onResume: () => this.setPausedState(false),
             onRetry: () => {
                 this.setPausedState(false);
@@ -301,6 +308,28 @@ export class GameScene extends Phaser.Scene {
                 this.setPausedState(false);
                 this.registry.set('gameStarted', false);
                 this.scene.restart();
+            },
+        });
+    }
+
+    openMidStageShop() {
+        if (!this.isDayActive || this.isPaused || this.isDiscoveryOpen) return;
+        this.setPausedState(true);
+        const prevBuoyLvl = gameState.getCardLevel('life_buoy');
+        showMidStageShopModal({
+            day: this.dayCfg.day,
+            onClose: () => {
+                if (gameState.data.flowerRepellent) {
+                    this.flowerRepellentActive = true;
+                    gameState.consumeFlowerRepellent();
+                }
+                const newBuoyLvl = gameState.getCardLevel('life_buoy');
+                if (newBuoyLvl > prevBuoyLvl) {
+                    this.buoysLeft += newBuoyLvl - prevBuoyLvl;
+                }
+                this.syncGoldHud();
+                this.updateHayButton();
+                this.setPausedState(false);
             },
         });
     }
@@ -355,17 +384,11 @@ export class GameScene extends Phaser.Scene {
                 this.registry.set('gameStarted', true);
                 this.scene.restart();
             },
-            onDailyChallenge: () => {
-                sound.startMusic('calm');
-                gameState.startDailyChallenge();
-                this.registry.set('gameStarted', true);
-                this.scene.restart();
-            },
         });
     }
 
     beginDayOrTutorial() {
-        if (!gameState.meta.welcomeSeen && gameState.mode === 'normal' && this.dayCfg.day === 1) {
+        if (!gameState.meta.welcomeSeen && this.dayCfg.day === 1) {
             this.setPausedState(true);
             showWelcomeTutorialModal(() => {
                 gameState.markWelcomeSeen();
@@ -381,7 +404,6 @@ export class GameScene extends Phaser.Scene {
 
         if (
             !gameState.meta.tutorialDone &&
-            gameState.mode === 'normal' &&
             this.dayCfg.day === 1 &&
             this.sheepList.length > 0
         ) {
@@ -461,7 +483,7 @@ export class GameScene extends Phaser.Scene {
 
         if (this.dayCfg.day === 1 && !gameState.data.runToken) {
             startEdgeRun({
-                mode: gameState.mode,
+                mode: 'normal',
                 dateKey: gameState.dailyDateKey,
                 classId: gameState.data.classId,
             }).then((res) => {
@@ -471,16 +493,14 @@ export class GameScene extends Phaser.Scene {
             });
         }
 
-        const prefix = gameState.mode === 'daily' ? 'چالش روزانه • ' : '';
         const tierLabel = this.dayCfg.worldTier >= 2 ? ` • سطح ${this.dayCfg.worldTier}` : '';
         this.showFloatingText(
             0,
             -115,
-            `${prefix}مرحله ${this.dayCfg.day}/${MAX_CAMPAIGN_DAY}: ${this.dayCfg.island.name} (${this.season.name}${tierLabel})`,
+            `مرحله ${this.dayCfg.day}/${MAX_CAMPAIGN_DAY}: ${this.dayCfg.island.name} (${this.season.name}${tierLabel})`,
             '#ffffff'
         );
 
-        // معرفی دقیق عوارض و عوامل جدید در همان مرحله خودش
         this.time.delayedCall(1200, () => {
             if (!this.isDayActive || this.dayCfg.bossType) return;
             if (this.dayCfg.day === 3 && this.terrain?.muds?.length > 0) {
@@ -535,7 +555,7 @@ export class GameScene extends Phaser.Scene {
     async loadEdgeDirector() {
         const res = await fetchEdgeDirector({
             day: this.dayCfg.day,
-            mode: gameState.mode,
+            mode: 'normal',
             dateKey: gameState.dailyDateKey,
             nickname: gameState.nickname || 'چوپان',
             islandName: this.dayCfg.island.name,
@@ -670,13 +690,11 @@ export class GameScene extends Phaser.Scene {
             const isPortrait = height > width;
             const aspect = height / Math.max(1, width);
 
-            // در موبایل عمودی، فضای کافی برای HUD بالا و داک پایین در نظر گرفته می‌شود
             const viewW = isPortrait ? 690 : 790;
             const viewH = isPortrait ? (aspect > 1.85 ? 980 : 940) : 815;
             const zoom = Math.min(width / viewW, height / viewH);
             cam.setZoom(zoom);
 
-            // جابه‌جایی ملایم مرکز دوربین به سمت بالا تا جزیره و سر کراکن زیر HUD نروند
             const offsetY = isPortrait ? (aspect > 1.85 ? -44 : -36) : -24;
             cam.centerOn(0, offsetY);
         };
@@ -692,6 +710,7 @@ export class GameScene extends Phaser.Scene {
             document.getElementById('game-hud-wrap')?.remove();
             document.getElementById('hud-bottom-dock')?.remove();
             removePauseModal();
+            removeMidStageShopModal();
             removeDiscoveryModal();
             this.bossManager?.destroy();
             this.interactables?.destroy();
@@ -826,7 +845,7 @@ export class GameScene extends Phaser.Scene {
         <div class="hud-top-right">
           <div class="hud-stage-badge">
             ${icon(cls.icon, 15)}
-            <span>${gameState.mode === 'daily' ? 'روزانه ' : ''}م${this.dayCfg.day}/${MAX_CAMPAIGN_DAY}</span>
+            <span>م${this.dayCfg.day}/${MAX_CAMPAIGN_DAY}</span>
             ${tierBadge}
             <span class="hud-island-chip" style="background:${this.season.badgeColor};">
               ${this.season.name} • ${this.dayCfg.island.name}
@@ -871,6 +890,9 @@ export class GameScene extends Phaser.Scene {
         </div>
 
         <div class="hud-top-left">
+          <button id="btn-shop" class="hud-icon-btn is-amber" title="فروشگاه">
+            ${icon('coin', 17)}
+          </button>
           <button id="btn-music" class="hud-icon-btn hud-hide-mobile" title="موزیک بازی">
             ${icon(musicOn ? 'musicOn' : 'musicOff', 17)}
           </button>
@@ -924,6 +946,11 @@ export class GameScene extends Phaser.Scene {
         window.addEventListener('resize', this._onHudResize);
         this.events.once('shutdown', () => {
             if (this._onHudResize) window.removeEventListener('resize', this._onHudResize);
+        });
+
+        wrap.querySelector('#btn-shop').addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.openMidStageShop();
         });
 
         wrap.querySelector('#btn-pause').addEventListener('click', (e) => {
@@ -1096,7 +1123,6 @@ export class GameScene extends Phaser.Scene {
         sound.playSave();
         sound.playBaa('happy');
         this.activeHay = new HayBait(this, pos.x, pos.y, HAY_CONFIG.DURATION_SEC);
-        // خنثی کردن صاعقه‌های نزدیک بسته علوفه
         this.chaos?.clearLightningNearHay(pos.x, pos.y);
         this.showFloatingText(pos.x, pos.y - 36, 'بسته علوفه آماده است!', '#fde047');
         this.updateHayButton();
@@ -1343,7 +1369,6 @@ export class GameScene extends Phaser.Scene {
         const allowed = this.dayCfg.allowedWolves || ['normal'];
         const d = this.dayCfg.day;
 
-        // معرفی گرگ سایه در مرحله ۶ و گرگ آلفا در مرحله ۹
         if (d === 6 && !this.signatureWolfSpawned && allowed.includes('swift')) {
             this.signatureWolfSpawned = true;
             return 'swift';
@@ -1826,6 +1851,7 @@ export class GameScene extends Phaser.Scene {
         this.removeTutorialBanner();
         this.removeCountdownOverlay();
         removePauseModal();
+        removeMidStageShopModal();
         removeDiscoveryModal();
         document.getElementById('boss-hud')?.remove();
         const fb = document.getElementById('frenzy-border');
@@ -2277,7 +2303,7 @@ export class GameScene extends Phaser.Scene {
             activeHay: this.activeHay,
             tideOffset: this.tideOffset,
             windVec,
-            flowerRepellent: gameState.data.flowerRepellent,
+            flowerRepellent: this.flowerRepellentActive,
             calmFactor,
             fleeSpeedMul,
             flowerEatSpeedMul,

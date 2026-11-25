@@ -16,6 +16,7 @@ import { showLeaderboardModal } from './LeaderboardModal.js';
 
 let guardTimer = null;
 let resizeShopHandler = null;
+let midShopEscHandler = null;
 
 export function removeModal() {
     if (guardTimer) {
@@ -29,11 +30,389 @@ export function removeModal() {
     document.getElementById('day-modal')?.remove();
 }
 
+export function removeMidStageShopModal() {
+    if (midShopEscHandler) {
+        window.removeEventListener('keydown', midShopEscHandler);
+        midShopEscHandler = null;
+    }
+    document.getElementById('mid-shop-modal')?.remove();
+}
+
 const RARITY_LABELS = {
     common: { tag: 'معمولی', bg: '#0b0e14', color: '#ffffff' },
     rare: { tag: 'کمیاب', bg: '#0284c7', color: '#ffffff' },
     epic: { tag: 'افسانه‌ای', bg: '#7c3aed', color: '#ffffff' },
 };
+
+/**
+ * فروشگاه سریع در حین مراحل و صفحه شکست (بدون نیاز به بردن مرحله)
+ */
+export function showMidStageShopModal({ day, onClose }) {
+    removeMidStageShopModal();
+    sound.playClick();
+
+    const cardsUnlocked = gameState.isMidStageCardsUnlocked(day);
+    let rerollCount = 0;
+    let boughtMap = new Map();
+    let pendingReplaceCardId = null;
+    let hayBoughtHere = 0;
+    let repellentBoughtHere = false;
+    let unlockedEvoToast = null;
+    let draftCards = cardsUnlocked ? gameState.rollDraftCards(3) : [];
+
+    const overlay = document.createElement('div');
+    overlay.id = 'mid-shop-modal';
+    overlay.className = 'game-overlay z-top';
+
+    const shell = document.createElement('div');
+    shell.className = cardsUnlocked ? 'pop-shell is-wide' : 'pop-shell';
+    overlay.appendChild(shell);
+    document.body.appendChild(overlay);
+
+    const closeShop = () => {
+        sound.playClick();
+        removeMidStageShopModal();
+        if (onClose) onClose();
+    };
+
+    midShopEscHandler = (e) => {
+        if (e.key === 'Escape') closeShop();
+    };
+    window.addEventListener('keydown', midShopEscHandler);
+
+    const willUnlockEvolution = (cardId) => {
+        if (gameState.getCardLevel(cardId) > 0) return null;
+        return (
+            EVOLUTIONS.find(
+                (evo) =>
+                    evo.requires.includes(cardId) &&
+                    evo.requires.every((req) => req === cardId || gameState.getCardLevel(req) >= 1)
+            ) || null
+        );
+    };
+
+    const renderReplacePicker = () => {
+        if (!pendingReplaceCardId) return '';
+        const newCard = CARDS.find((c) => c.id === pendingReplaceCardId);
+        const ownedIds = gameState.getOwnedCardIds();
+        return `
+      <div class="pop-row is-column replace-picker-box">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+          <div class="pop-label" style="color:#ffe047;">
+            اسلات کارت‌ها پر است! کدام کارت را با «${newCard?.title || ''}» جایگزین می‌کنی؟
+          </div>
+          <button type="button" id="btn-mid-cancel-replace" class="pop-pill is-sm is-danger">انصراف</button>
+        </div>
+        <div class="pop-grid-2">
+          ${ownedIds
+            .map((oid) => {
+                const oc = CARDS.find((c) => c.id === oid);
+                if (!oc) return '';
+                const lvl = gameState.getCardLevel(oid);
+                return `
+              <button type="button" class="pop-pill is-white is-sm mid-replace-choice" data-replace="${oid}" style="justify-content:space-between; width:100%; border-radius:14px; padding:9px 12px;">
+                <span style="display:inline-flex; align-items:center; gap:6px;">
+                  ${icon(oc.icon, 16)}
+                  <span>${oc.title} (سطح ${lvl})</span>
+                </span>
+                <span style="color:#be123c; font-size:11.5px;">جایگزینی</span>
+              </button>
+            `;
+            })
+            .join('')}
+        </div>
+      </div>
+    `;
+    };
+
+    const render = () => {
+        const d = gameState.data;
+        const usedSlots = gameState.getOwnedCardIds().length;
+        const maxSlots = gameState.getMaxCardSlots();
+        const hayFull = d.hayCount >= HAY_CONFIG.MAX_STOCK;
+        const rerollPrice = gameState.getRerollPrice(rerollCount);
+
+        const cardsHtml = draftCards
+            .map((c) => {
+                const rm = RARITY_LABELS[c.rarity] || RARITY_LABELS.common;
+                const currLvl = gameState.getCardLevel(c.id);
+                const boughtHere = boughtMap.has(c.id);
+                const purchaseInfo = boughtMap.get(c.id);
+                const price = boughtHere ? purchaseInfo.pricePaid : gameState.getCardPrice(c);
+                const isMaxedBefore = !boughtHere && currLvl >= c.maxLevel;
+                const canAfford = !boughtHere && !isMaxedBefore && d.gold >= price;
+                const needsReplace = !boughtHere && !isMaxedBefore && !gameState.canBuyWithoutReplace(c.id);
+                const evoHint = !boughtHere && !isMaxedBefore ? willUnlockEvolution(c.id) : null;
+
+                const cardClasses = [
+                    'pop-card',
+                    evoHint ? 'is-evolution' : '',
+                    boughtHere ? 'is-bought' : '',
+                    !boughtHere && (!canAfford || isMaxedBefore) ? 'is-locked' : '',
+                ]
+                    .filter(Boolean)
+                    .join(' ');
+
+                return `
+          <button type="button" class="${cardClasses}" data-card="${c.id}">
+            <div>
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:7px;">
+                <span class="pop-sticker ${evoHint || boughtHere ? 'is-yellow' : ''}" style="width:36px; height:36px;">
+                  ${icon(c.icon, 20)}
+                </span>
+                <span style="font-size:10px; font-weight:900; background:${rm.bg}; color:${rm.color}; padding:2px 8px; border-radius:999px;">
+                  ${rm.tag} • ${currLvl}/${c.maxLevel}
+                </span>
+              </div>
+              <div class="pop-label" style="margin-bottom:4px;">${c.title}</div>
+              <div class="card-benefit-line">+ ${c.benefit || c.desc}</div>
+              ${c.cost ? `<div class="card-cost-line">- ${c.cost}</div>` : ''}
+            </div>
+            <div class="pop-pill is-sm ${boughtHere ? 'is-green' : canAfford ? '' : 'is-disabled'}" style="width:100%; pointer-events:none;">
+              ${
+                    boughtHere
+                        ? `${icon('check', 15)}<span>خریداری شد (لغو)</span>`
+                        : isMaxedBefore
+                            ? `<span>حداکثر سطح</span>`
+                            : needsReplace
+                                ? `${icon('coin', 15)}<span>${price} سکه (جایگزینی)</span>`
+                                : `${icon('coin', 15)}<span>${price} سکه</span>`
+                }
+            </div>
+          </button>
+        `;
+            })
+            .join('');
+
+        shell.innerHTML = `
+      <div class="pop-header">
+        <h2 class="pop-title">فروشگاه مرحله ${day}</h2>
+        <div style="display:flex; justify-content:center; gap:8px; margin-top:4px; flex-wrap:wrap;">
+          <span class="pop-pill is-sm" style="pointer-events:none; color:#ffe047;">
+            ${icon('coin', 15)}<span>${d.gold} سکه</span>
+          </span>
+          ${
+            cardsUnlocked
+                ? `<span class="pop-pill is-sm" style="pointer-events:none;">
+                     ${icon('sparkle', 14)}<span>اسلات ${usedSlots}/${maxSlots}</span>
+                   </span>`
+                : ''
+        }
+        </div>
+      </div>
+
+      <div class="pop-body">
+        ${renderReplacePicker()}
+        ${
+            unlockedEvoToast
+                ? `<div class="pop-row" style="background:#b45309;">
+             <div class="pop-row-left">
+               <span class="pop-sticker is-yellow">${icon(unlockedEvoToast.icon, 20)}</span>
+               <div>
+                 <div class="pop-label" style="color:#ffe047;">تکامل آزاد شد: ${unlockedEvoToast.title}</div>
+                 <div class="pop-sublabel">${unlockedEvoToast.desc}</div>
+               </div>
+             </div>
+           </div>`
+                : ''
+        }
+
+        <div class="pop-grid-2">
+          <div class="pop-row" style="padding:10px 12px;">
+            <div class="pop-row-left">
+              <span class="pop-sticker" style="width:36px; height:36px;">${icon('hay', 19)}</span>
+              <div>
+                <div class="pop-label" style="font-size:13.5px;">علوفه (${d.hayCount}/${HAY_CONFIG.MAX_STOCK})</div>
+                <div class="pop-sublabel">جذب گله + امن در برابر صاعقه</div>
+              </div>
+            </div>
+            <div style="display:flex; gap:5px;">
+              <button type="button" id="mid-buy-hay" class="pop-pill is-sm ${hayFull || d.gold < HAY_CONFIG.PRICE ? 'is-disabled' : ''}">
+                <span>${hayFull ? 'تکمیل' : `${HAY_CONFIG.PRICE} سکه`}</span>
+              </button>
+              ${
+            hayBoughtHere > 0
+                ? `<button type="button" id="mid-refund-hay" class="pop-pill is-sm is-danger">لغو</button>`
+                : ''
+        }
+            </div>
+          </div>
+
+          <div class="pop-row" style="padding:10px 12px;">
+            <div class="pop-row-left">
+              <span class="pop-sticker" style="width:36px; height:36px;">${icon('shield', 19)}</span>
+              <div>
+                <div class="pop-label" style="font-size:13.5px;">دافع گل</div>
+                <div class="pop-sublabel">دور کردن گوسفندها از باغچه</div>
+              </div>
+            </div>
+            <button type="button" id="mid-buy-repellent" class="pop-pill is-sm ${repellentBoughtHere ? 'is-green' : !d.flowerRepellent && d.gold >= REPELLENT_CONFIG.PRICE ? '' : 'is-disabled'}">
+              <span>${repellentBoughtHere ? 'فعال (لغو)' : d.flowerRepellent ? 'فعال' : `${REPELLENT_CONFIG.PRICE} سکه`}</span>
+            </button>
+          </div>
+        </div>
+
+        ${
+            cardsUnlocked
+                ? `
+          <div class="pop-row" style="padding:8px 12px;">
+            <div class="pop-row-left">
+              <span class="pop-sticker" style="width:34px; height:34px;">${icon('sparkle', 18)}</span>
+              <span class="pop-label">کارت‌های قدرت</span>
+            </div>
+            <button type="button" id="mid-btn-reroll" class="pop-pill is-sm ${rerollPrice === 0 ? 'is-green' : ''} ${d.gold < rerollPrice ? 'is-disabled' : ''}">
+              ${icon('dice', 15)}
+              <span>${rerollPrice === 0 ? 'تعویض رایگان' : `تعویض (${rerollPrice} سکه)`}</span>
+            </button>
+          </div>
+          <div class="pop-grid-3">${cardsHtml}</div>
+        `
+                : `
+          <div class="pop-row" style="background:#08486c;">
+            <div class="pop-row-left">
+              <span class="pop-sticker">${icon('lock', 20)}</span>
+              <div>
+                <div class="pop-label">کارت‌های قدرت (بازگشایی از مرحله ۳)</div>
+                <div class="pop-sublabel">فعلاً می‌توانی از همینجا علوفه و دافع گل بخری.</div>
+              </div>
+            </div>
+          </div>
+        `
+        }
+      </div>
+
+      <div class="pop-footer">
+        <button type="button" id="btn-mid-shop-close" class="pop-pill is-yellow is-full">
+          ${icon('play', 18)}
+          <span>بازگشت و ادامه</span>
+        </button>
+      </div>
+
+      <button type="button" id="btn-mid-shop-back" class="pop-back-btn" title="بازگشت">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>
+      </button>
+    `;
+
+        shell.querySelector('#btn-mid-cancel-replace')?.addEventListener('click', () => {
+            sound.playCancel();
+            pendingReplaceCardId = null;
+            render();
+        });
+
+        shell.querySelectorAll('.mid-replace-choice[data-replace]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const oldId = btn.getAttribute('data-replace');
+                const newId = pendingReplaceCardId;
+                if (!oldId || !newId) return;
+                const res = gameState.buyDraftCard(newId, oldId);
+                pendingReplaceCardId = null;
+                if (res.ok) {
+                    boughtMap.set(newId, res);
+                    if (res.newEvolutions.length > 0) {
+                        unlockedEvoToast = res.newEvolutions[0];
+                        sound.playEvolution();
+                    } else {
+                        sound.playFever();
+                    }
+                    render();
+                }
+            });
+        });
+
+        shell.querySelectorAll('.pop-card[data-card]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const cid = btn.getAttribute('data-card');
+                if (boughtMap.has(cid)) {
+                    const info = boughtMap.get(cid);
+                    if (gameState.refundDraftCard(cid, info)) {
+                        boughtMap.delete(cid);
+                        pendingReplaceCardId = null;
+                        if (unlockedEvoToast && !gameState.hasEvolution(unlockedEvoToast.id)) {
+                            unlockedEvoToast = null;
+                        }
+                        sound.playCancel();
+                        render();
+                    }
+                    return;
+                }
+
+                const card = CARDS.find((c) => c.id === cid);
+                if (!card) return;
+                const price = gameState.getCardPrice(card);
+                if (gameState.getCardLevel(cid) >= card.maxLevel || gameState.data.gold < price) return;
+
+                if (!gameState.canBuyWithoutReplace(cid)) {
+                    sound.playClick();
+                    pendingReplaceCardId = cid;
+                    render();
+                    return;
+                }
+
+                const res = gameState.buyDraftCard(cid);
+                if (res.ok) {
+                    boughtMap.set(cid, res);
+                    pendingReplaceCardId = null;
+                    if (res.newEvolutions.length > 0) {
+                        unlockedEvoToast = res.newEvolutions[0];
+                        sound.playEvolution();
+                    } else {
+                        sound.playFever();
+                    }
+                    render();
+                }
+            });
+        });
+
+        shell.querySelector('#mid-btn-reroll')?.addEventListener('click', () => {
+            const wasFree = rerollPrice === 0;
+            if (gameState.spendReroll(rerollPrice)) {
+                if (!wasFree) rerollCount++;
+                boughtMap = new Map();
+                pendingReplaceCardId = null;
+                sound.playBuy();
+                draftCards = gameState.rollDraftCards(3);
+                render();
+            }
+        });
+
+        shell.querySelector('#mid-buy-hay')?.addEventListener('click', () => {
+            if (gameState.buyHay()) {
+                hayBoughtHere += 1;
+                sound.playBuy();
+                render();
+            }
+        });
+
+        shell.querySelector('#mid-refund-hay')?.addEventListener('click', () => {
+            if (hayBoughtHere > 0 && gameState.refundHay()) {
+                hayBoughtHere -= 1;
+                sound.playCancel();
+                render();
+            }
+        });
+
+        shell.querySelector('#mid-buy-repellent')?.addEventListener('click', () => {
+            if (repellentBoughtHere) {
+                if (gameState.refundFlowerRepellent()) {
+                    repellentBoughtHere = false;
+                    sound.playCancel();
+                    render();
+                }
+                return;
+            }
+            if (gameState.buyFlowerRepellent()) {
+                repellentBoughtHere = true;
+                sound.playBuy();
+                render();
+            }
+        });
+
+        shell.querySelector('#btn-mid-shop-close').addEventListener('click', closeShop);
+        shell.querySelector('#btn-mid-shop-back').addEventListener('click', closeShop);
+    };
+
+    render();
+}
 
 export function showEndOfDayModal({
                                       isVictory,
@@ -105,7 +484,7 @@ export function showEndOfDayModal({
             classId: gameState.data.classId || 'classic',
             wolvesDefeated: gameState.data.runWolvesDefeated || 0,
             bossesDefeated: gameState.data.runBossesDefeated || 0,
-            mode: gameState.mode,
+            mode: 'normal',
             dateKey: gameState.dailyDateKey,
         });
 
@@ -210,7 +589,6 @@ export function showEndOfDayModal({
     };
 
     const render = () => {
-        const isDaily = gameState.mode === 'daily';
         const isMobile = window.innerWidth <= 780;
 
         // =========================================================
@@ -310,7 +688,7 @@ export function showEndOfDayModal({
             shell.querySelector('#btn-victory-lb').addEventListener('click', async () => {
                 sound.playClick();
                 const receipt = await doSubmitScore();
-                showLeaderboardModal(isDaily ? 'daily' : 'normal', receipt);
+                showLeaderboardModal('normal', receipt);
             });
             shell.querySelector('#btn-victory-restart').addEventListener('click', () => {
                 sound.playClick();
@@ -326,7 +704,7 @@ export function showEndOfDayModal({
         }
 
         // =========================================================
-        // صفحه شکست در مرحله
+        // صفحه شکست در مرحله (همراه با دسترسی به فروشگاه قبل از تلاش مجدد)
         // =========================================================
         if (!isVictory) {
             const canRetry = gameState.hasDaySnapshot();
@@ -336,7 +714,7 @@ export function showEndOfDayModal({
             shell.innerHTML = `
         <div class="pop-header">
           <h2 class="pop-title">
-            ${isBossTimeout ? 'اتمام زمان نبرد' : isDaily ? 'پایان تلاش در مرحله ' + completedDay : 'پایان مرحله ' + completedDay}
+            ${isBossTimeout ? 'اتمام زمان نبرد' : 'پایان مرحله ' + completedDay}
           </h2>
           <p class="pop-subtitle">
             ${
@@ -350,8 +728,12 @@ export function showEndOfDayModal({
         <div class="pop-body">
           <div class="pop-grid-2">
             <div class="pop-row" style="justify-content:center; flex-direction:column; gap:4px; padding:12px;">
-              <div class="pop-sublabel" style="margin:0;">مرحله رسیده</div>
-              <div class="pop-label" style="font-size:20px; color:#ffe047;">مرحله ${completedDay}</div>
+              <div class="pop-sublabel" style="margin:0;">سکه / علوفه باقی‌مانده</div>
+              <div class="pop-label" style="font-size:18px; color:#ffe047; display:inline-flex; align-items:center; gap:8px;">
+                <span>${gameState.data.gold} سکه</span>
+                <span>•</span>
+                <span>${gameState.data.hayCount} علوفه</span>
+              </div>
             </div>
 
             <div class="pop-row" style="justify-content:center; flex-direction:column; gap:4px; padding:12px;">
@@ -378,6 +760,11 @@ export function showEndOfDayModal({
                     : ''
             }
 
+          <button type="button" id="btn-fail-shop" class="pop-pill is-green is-full" style="font-size:14.5px; padding:11px 14px;">
+            ${icon('coin', 18)}
+            <span>فروشگاه (خرید علوفه، دافع گل یا کارت)</span>
+          </button>
+
           <div class="pop-grid-2">
             <button type="button" id="btn-fail-lb" class="pop-pill is-full" style="font-size:13px; padding:11px 10px;" ${isSubmitting ? 'disabled' : ''}>
               ${icon('trophy', 17)}
@@ -386,7 +773,7 @@ export function showEndOfDayModal({
 
             <button type="button" id="btn-fail-restart" class="pop-pill is-full" style="font-size:13px; padding:11px 10px;">
               ${icon('restart', 17)}
-              <span>شروع ران جدید (از مرحله ۱)</span>
+              <span>شروع ران جدید (مرحله ۱)</span>
             </button>
           </div>
         </div>
@@ -407,6 +794,12 @@ export function showEndOfDayModal({
         </button>
       `;
 
+            shell.querySelector('#btn-fail-shop').addEventListener('click', () => {
+                showMidStageShopModal({
+                    day: completedDay,
+                    onClose: () => render(),
+                });
+            });
             shell.querySelector('#btn-retry-day')?.addEventListener('click', () => {
                 sound.playClick();
                 removeModal();
@@ -420,7 +813,7 @@ export function showEndOfDayModal({
             shell.querySelector('#btn-fail-lb').addEventListener('click', async () => {
                 sound.playClick();
                 const receipt = await doSubmitScore();
-                showLeaderboardModal(isDaily ? 'daily' : 'normal', receipt);
+                showLeaderboardModal('normal', receipt);
             });
             shell.querySelector('#btn-menu-back').addEventListener('click', () => {
                 sound.playClick();
@@ -431,8 +824,8 @@ export function showEndOfDayModal({
         }
 
         const d = gameState.data;
-        const nextIsland = getIslandForDay(d.day, isDaily, gameState.dailyDateKey);
-        const nextCfg = getDayConfig(d.day, isDaily, gameState.dailyDateKey, gameState.getWorldTier());
+        const nextIsland = getIslandForDay(d.day, false, gameState.dailyDateKey);
+        const nextCfg = getDayConfig(d.day, false, gameState.dailyDateKey, gameState.getWorldTier());
         const nextFlockCount = gameState.buildStageFlock(d.day).length;
         const nextBoss = nextCfg.bossType ? BOSS_CONFIG[nextCfg.bossType] : null;
 
@@ -993,7 +1386,7 @@ export function showEndOfDayModal({
         shell.querySelector('#btn-submit-lb')?.addEventListener('click', async () => {
             sound.playClick();
             const receipt = await doSubmitScore();
-            showLeaderboardModal(isDaily ? 'daily' : 'normal', receipt);
+            showLeaderboardModal('normal', receipt);
         });
 
         shell.querySelector('#btn-menu-back').addEventListener('click', () => {

@@ -1,4 +1,4 @@
-import { SHEPHERD_CLASSES, getTodayDateKey } from '../config/gameData.js';
+import { SHEPHERD_CLASSES } from '../config/gameData.js';
 import { gameState } from '../state/GameState.js';
 import { sound } from '../utils/SoundGen.js';
 import { icon } from './Icons.js';
@@ -24,7 +24,7 @@ function renderSegmentedSlider(prefix, level) {
   `;
 }
 
-export function showStartMenu({ onStart, onNewGame, onDailyChallenge }) {
+export function showStartMenu({ onStart, onNewGame }) {
     removeStartMenu();
 
     let view = 'main'; // 'main' | 'classes' | 'settings'
@@ -40,8 +40,6 @@ export function showStartMenu({ onStart, onNewGame, onDailyChallenge }) {
 
     const render = () => {
         const hasSave = gameState.hasSavedProgress();
-        const todayKey = getTodayDateKey();
-        const todayBest = gameState.meta.dailyBest[todayKey] || 0;
         const selectedId = gameState.meta.selectedClass || 'classic';
         const selectedCls = SHEPHERD_CLASSES[selectedId] || SHEPHERD_CLASSES.classic;
         const musicLvl = sound.getMusicLevel();
@@ -204,7 +202,7 @@ export function showStartMenu({ onStart, onNewGame, onDailyChallenge }) {
         shell.innerHTML = `
       <div class="pop-header">
         <h1 class="pop-title">چوپان جزیره</h1>
-        <p class="pop-subtitle">۶ جزیره متنوع • باس‌فایت کراکن و شاه گرگ‌ها • تکامل کارت‌ها</p>
+        <p class="pop-subtitle">۱۰ مرحله چالشی • باس‌فایت کراکن و شاه گرگ‌ها • تکامل کارت‌ها</p>
       </div>
 
       <div class="pop-body">
@@ -225,7 +223,7 @@ export function showStartMenu({ onStart, onNewGame, onDailyChallenge }) {
               />
             </div>
 
-            <div class="pop-row is-clickable" id="row-class-pick">
+            <div class="pop-row is-clickable is-fill" id="row-class-pick">
               <div class="pop-row-left">
                 <span class="pop-sticker is-yellow">${icon(selectedCls.icon, 20)}</span>
                 <div>
@@ -236,20 +234,6 @@ export function showStartMenu({ onStart, onNewGame, onDailyChallenge }) {
               <button type="button" class="pop-pill is-sm">
                 <span>${selectedCls.name}</span>
                 <span class="pop-chevrons"><span class="pop-chevron-tri"></span></span>
-              </button>
-            </div>
-
-            <div class="pop-row is-clickable" id="row-daily">
-              <div class="pop-row-left">
-                <span class="pop-sticker is-yellow">${icon('calendar', 20)}</span>
-                <div>
-                  <div class="pop-label">چالش همگانی امروز</div>
-                  <div class="pop-sublabel">${todayBest > 0 ? `رکورد امروز تو: ${todayBest}` : 'نقشه و کارت یکسان برای همه'}</div>
-                </div>
-              </div>
-              <button type="button" id="btn-daily" class="pop-pill is-sm">
-                <span>شروع</span>
-                <span class="pop-chevrons"><span class="pop-chevron-tri"></span><span class="pop-chevron-tri"></span></span>
               </button>
             </div>
           </div>
@@ -334,13 +318,6 @@ export function showStartMenu({ onStart, onNewGame, onDailyChallenge }) {
             saveNick();
             removeStartMenu();
             onStart();
-        });
-
-        shell.querySelector('#row-daily').addEventListener('click', () => {
-            sound.playClick();
-            saveNick();
-            removeStartMenu();
-            onDailyChallenge();
         });
 
         shell.querySelector('#btn-new')?.addEventListener('click', () => {

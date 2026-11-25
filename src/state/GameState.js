@@ -20,7 +20,6 @@ import {
 import { sound } from '../utils/SoundGen.js';
 
 const SAVE_KEY = 'island_shepherd_save_v5';
-const DAILY_SAVE_PREFIX = 'island_shepherd_daily_save_v5_';
 const META_KEY = 'island_shepherd_meta_v5';
 const NICK_KEY = 'island_shepherd_nick_v1';
 
@@ -118,31 +117,9 @@ class GameStateManager {
         }
     }
 
-    loadDailySave(dateKey) {
-        try {
-            const raw = localStorage.getItem(DAILY_SAVE_PREFIX + dateKey);
-            if (!raw) return null;
-            const parsed = JSON.parse(raw);
-            if (!parsed || typeof parsed.day !== 'number') return null;
-            if (parsed.campaignCompleted || parsed.day > MAX_CAMPAIGN_DAY) return null;
-            return {
-                bossesBeaten: [],
-                bossPerks: [],
-                campaignCompleted: false,
-                ...parsed,
-            };
-        } catch {
-            return null;
-        }
-    }
-
     saveCurrentProgress() {
         try {
-            if (this.mode === 'daily') {
-                localStorage.setItem(DAILY_SAVE_PREFIX + this.dailyDateKey, JSON.stringify(this.data));
-            } else {
-                localStorage.setItem(SAVE_KEY, JSON.stringify(this.data));
-            }
+            localStorage.setItem(SAVE_KEY, JSON.stringify(this.data));
         } catch {
             // ignore
         }
@@ -156,19 +133,7 @@ class GameStateManager {
         }
     }
 
-    clearDailySave(dateKey) {
-        try {
-            localStorage.removeItem(DAILY_SAVE_PREFIX + dateKey);
-        } catch {
-            // ignore
-        }
-    }
-
     hasSavedProgress() {
-        if (this.mode === 'daily') {
-            const saved = this.loadDailySave(this.dailyDateKey);
-            return Boolean(saved && saved.day > 1 && !saved.campaignCompleted);
-        }
         const saved = this.loadNormalSave();
         return Boolean(saved && saved.day > 1 && !saved.campaignCompleted);
     }
@@ -238,6 +203,10 @@ class GameStateManager {
 
     isCardShopUnlocked(completedDay) {
         return completedDay >= SLOT_CONFIG.SHOP_UNLOCK_AFTER_DAY && completedDay < MAX_CAMPAIGN_DAY;
+    }
+
+    isMidStageCardsUnlocked(currentDay = this.data.day) {
+        return currentDay > SLOT_CONFIG.SHOP_UNLOCK_AFTER_DAY;
     }
 
     getOwnedCardIds() {
@@ -366,40 +335,12 @@ class GameStateManager {
         this.saveCurrentProgress();
     }
 
-    startDailyChallenge() {
-        this.mode = 'daily';
-        this.dailyDateKey = getTodayDateKey();
-        this.daySnapshot = null;
-        const saved = this.loadDailySave(this.dailyDateKey);
-        if (saved && saved.day > 1) {
-            this.data = saved;
-        } else {
-            this.data = this.createFreshRun();
-        }
-    }
-
-    restartDailyFresh() {
-        this.mode = 'daily';
-        this.dailyDateKey = getTodayDateKey();
-        this.daySnapshot = null;
-        this.clearDailySave(this.dailyDateKey);
-        this.data = this.createFreshRun();
-    }
-
     reset() {
-        if (this.mode === 'daily') {
-            this.restartDailyFresh();
-        } else {
-            this.startNormalNewGame();
-        }
+        this.startNormalNewGame();
     }
 
-    syncRngForStage(day) {
-        if (this.mode === 'daily') {
-            setRngSeed(`daily_${this.dailyDateKey}_stage_${day}`);
-        } else {
-            setRngSeed(null);
-        }
+    syncRngForStage() {
+        setRngSeed(null);
     }
 
     saveDaySnapshot() {
@@ -410,9 +351,25 @@ class GameStateManager {
         return Boolean(this.daySnapshot);
     }
 
+    /**
+     * هنگام تلاش مجدد بعد از باخت:
+     * - مصرف علوفه و دافع گل (و خریدهای فروشگاه وسط مرحله / صفحه شکست) حفظ می‌شوند
+     * - فقط آمار مرحله‌ای مثل مرحله، امتیاز و لاگ به ابتدای مرحله برمی‌گردند
+     */
     retryCurrentDay() {
         if (!this.hasDaySnapshot()) return;
+        const currentHay = this.data.hayCount;
+        const currentRepellent = this.data.flowerRepellent;
+        const currentGold = this.data.gold;
+        const currentCards = JSON.parse(JSON.stringify(this.data.cards || {}));
+        const currentRerolls = this.data.freeRerolls;
+
         this.data = JSON.parse(JSON.stringify(this.daySnapshot));
+        this.data.hayCount = currentHay;
+        this.data.flowerRepellent = currentRepellent;
+        this.data.gold = currentGold;
+        this.data.cards = currentCards;
+        this.data.freeRerolls = currentRerolls;
         this.saveCurrentProgress();
     }
 
@@ -574,8 +531,15 @@ class GameStateManager {
         return true;
     }
 
+    consumeFlowerRepellent() {
+        if (!this.data.flowerRepellent) return false;
+        this.data.flowerRepellent = false;
+        this.saveCurrentProgress();
+        return true;
+    }
+
     buildStageFlock(day) {
-        const cfg = getDayConfig(day, this.mode === 'daily', this.dailyDateKey, this.getWorldTier());
+        const cfg = getDayConfig(day, false, this.dailyDateKey, this.getWorldTier());
         const cls = this.getClassConfig(this.data.classId);
         const list = [];
 
@@ -598,7 +562,6 @@ class GameStateManager {
         const d = targetDay ?? this.data.day;
         const cls = this.getClassConfig(this.data.classId);
 
-        // در باس‌فایت نهایی (مرحله ۱۰) بازیکن همیشه می‌تواند تا ۲ گوسفند از دست بدهد
         if (d === MAX_CAMPAIGN_DAY) {
             const minFloor = Math.min(3, totalFlock);
             return Math.max(minFloor, totalFlock - 2);
@@ -714,7 +677,6 @@ class GameStateManager {
         const completedDay = this.data.day;
 
         this.data.gold = Math.max(0, this.data.gold + netGold);
-        this.data.flowerRepellent = false;
 
         if (completedMission) {
             this.lastMissionId = completedMission.id;
@@ -744,13 +706,6 @@ class GameStateManager {
             this.data.day += 1;
             if (this.data.day > this.meta.maxDayReached) {
                 this.meta.maxDayReached = this.data.day;
-            }
-        }
-
-        if (this.mode === 'daily') {
-            const prevBest = this.meta.dailyBest[this.dailyDateKey] || 0;
-            if (this.data.totalScore > prevBest) {
-                this.meta.dailyBest[this.dailyDateKey] = this.data.totalScore;
             }
         }
 
