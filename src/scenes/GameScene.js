@@ -22,6 +22,7 @@ import { HayBait } from '../entities/HayBait.js';
 import { ChaosDirector } from '../entities/ChaosEvents.js';
 import { MapInteractables } from '../entities/MapInteractables.js';
 import { BossManager } from '../entities/BossManager.js';
+import { TerrainSystem } from '../entities/TerrainSystem.js';
 import { sound } from '../utils/SoundGen.js';
 import {
     fetchDailyNews,
@@ -50,7 +51,8 @@ export class GameScene extends Phaser.Scene {
         this.dayCfg = getDayConfig(
             gameState.data.day,
             gameState.mode === 'daily',
-            gameState.dailyDateKey
+            gameState.dailyDateKey,
+            gameState.getWorldTier()
         );
         this.shapeId = this.dayCfg.island.id;
         this.season = this.dayCfg.season;
@@ -75,7 +77,7 @@ export class GameScene extends Phaser.Scene {
         this.discoveryQueue = [];
         this.isDiscoveryOpen = false;
         this.discoveriesShownThisStage = 0;
-        this.beehiveHintTimer = this.dayCfg.hasBeehives ? 5.2 : 0;
+        this.beehiveHintTimer = this.dayCfg.hasBeehives ? 4.8 : 0;
 
         this.ambientBaaTimer = 4.5 + Math.random() * 4.0;
 
@@ -102,6 +104,7 @@ export class GameScene extends Phaser.Scene {
         this.buoysLeft = gameState.getCardLevel('life_buoy');
         this.midDayBonusGold = 0;
         this.bossBountyEarned = 0;
+        this.bossMilestone = null;
         this.woolDrops = [];
         this.newlyUnlockedClasses = [];
 
@@ -129,6 +132,7 @@ export class GameScene extends Phaser.Scene {
         this.activeHay = null;
         this.bossManager = null;
         this.interactables = null;
+        this.terrain = null;
         this.tutGroup = null;
         this.tutSheep = null;
 
@@ -147,6 +151,7 @@ export class GameScene extends Phaser.Scene {
         this.islandG = this.add.graphics().setDepth(2);
         this.redrawIsland(0);
         this.decorateIsland();
+        this.terrain = new TerrainSystem(this, this.dayCfg);
         this.createSeasonalAmbient();
 
         this.nightOverlay = this.add
@@ -160,6 +165,7 @@ export class GameScene extends Phaser.Scene {
             hasGoldenZone: this.dayCfg.hasGoldenZone,
             hasBeehives: this.dayCfg.hasBeehives,
             hiveCount: this.dayCfg.hiveCount,
+            terrain: this.terrain,
         });
 
         this.spawnFlowers(this.dayCfg.flowerCount);
@@ -470,12 +476,25 @@ export class GameScene extends Phaser.Scene {
         }
 
         const prefix = gameState.mode === 'daily' ? 'چالش روزانه • ' : '';
+        const tierLabel = this.dayCfg.worldTier >= 2 ? ` • سطح ${this.dayCfg.worldTier}` : '';
         this.showFloatingText(
             0,
             -115,
-            `${prefix}مرحله ${this.dayCfg.day}: ${this.dayCfg.island.name} (${this.season.name})`,
+            `${prefix}مرحله ${this.dayCfg.day}: ${this.dayCfg.island.name} (${this.season.name}${tierLabel})`,
             '#ffffff'
         );
+
+        // معرفی عوارض جدید زمین به محض ورود اولین بار
+        this.time.delayedCall(1500, () => {
+            if (!this.isDayActive || this.dayCfg.bossType) return;
+            if (this.terrain?.pond && !gameState.hasDiscovered('terrain_pond')) {
+                this.triggerDiscovery('terrain_pond');
+            } else if (this.terrain?.slopes?.length > 0 && !gameState.hasDiscovered('terrain_slope')) {
+                this.triggerDiscovery('terrain_slope');
+            } else if (this.terrain?.muds?.length > 0 && !gameState.hasDiscovered('terrain_mud')) {
+                this.triggerDiscovery('terrain_mud');
+            }
+        });
 
         const allowedLoss = this.sheepList.length - this.quota;
         if (allowedLoss === 0) {
@@ -484,7 +503,7 @@ export class GameScene extends Phaser.Scene {
                     this.showFloatingText(0, -80, 'هشدار: از دست دادن حتی ۱ گوسفند = باخت!', '#fb7185');
                 }
             });
-        } else if (allowedLoss === 1 && this.dayCfg.day >= 3) {
+        } else if (allowedLoss === 1 && this.dayCfg.day >= 4) {
             this.time.delayedCall(900, () => {
                 if (this.isDayActive) {
                     this.showFloatingText(0, -80, 'حداکثر ۱ گوسفند حاشیه خطا داری!', '#fde047');
@@ -510,7 +529,10 @@ export class GameScene extends Phaser.Scene {
             this.triggerDiscovery(`boss_${this.dayCfg.bossType}`);
         }
 
-        this.loadEdgeDirector();
+        // فرمان لبه و کُری‌خوانی باس فقط از مرحله ۳ به بعد (یا در باس‌فایت‌ها)
+        if (this.dayCfg.edgeDecreeAllowed || this.dayCfg.bossType) {
+            this.loadEdgeDirector();
+        }
     }
 
     async loadEdgeDirector() {
@@ -527,7 +549,7 @@ export class GameScene extends Phaser.Scene {
 
         if (!this.isDayActive) return;
 
-        if (res?.ok && res.decree) {
+        if (res?.ok && res.decree && this.dayCfg.edgeDecreeAllowed) {
             this.activeDecree = res.decree;
             this.edgeMods = {
                 ...this.edgeMods,
@@ -558,7 +580,7 @@ export class GameScene extends Phaser.Scene {
             return;
         }
 
-        if (this.dayCfg.day >= 2 && !this.dayCfg.bossType) {
+        if (this.dayCfg.day >= 3 && !this.dayCfg.bossType) {
             this.loadDailyNews();
         }
     }
@@ -597,9 +619,17 @@ export class GameScene extends Phaser.Scene {
 
     handleBossDefeated(bounty) {
         this.bossBountyEarned = Math.round(bounty * gameState.getGoldMultiplier());
-        gameState.recordBossDefeated();
+        this.bossMilestone = gameState.recordBossDefeated(this.dayCfg.bossType);
         sound.setMusicMode('calm');
-        this.time.delayedCall(1250, () => {
+        if (this.bossMilestone) {
+            this.showFloatingText(
+                0,
+                -130,
+                `اسلات ${this.bossMilestone.newMaxSlots} کارت باز شد!`,
+                '#fde047'
+            );
+        }
+        this.time.delayedCall(1300, () => {
             if (this.isDayActive) this.endDay(true);
         });
     }
@@ -658,14 +688,14 @@ export class GameScene extends Phaser.Scene {
             removeDiscoveryModal();
             this.bossManager?.destroy();
             this.interactables?.destroy();
+            this.terrain?.destroy();
         });
     }
 
     consumeStamina(amount, x, y) {
         if (this.inTutorial) return true;
         if (this.exhaustTimer > 0) return false;
-        const cost = this.feverTimer > 0 ? amount * 0.5 : amount;
-        this.stamina = Math.max(0, this.stamina - cost);
+        this.stamina = Math.max(0, this.stamina - amount);
         if (this.stamina <= 0) {
             this.triggerExhaustion(x, y);
             return false;
@@ -723,7 +753,8 @@ export class GameScene extends Phaser.Scene {
                 const dy = pt.y - this.lastDragPos.y;
                 const stepDist = Math.hypot(dx, dy);
                 if (stepDist >= 16) {
-                    if (!this.consumeStamina(STAMINA.SWIPE_STEP_COST, pt.x, pt.y)) return;
+                    const stepCost = gameState.getSwipeStepStaminaCost(this.feverTimer > 0);
+                    if (!this.consumeStamina(stepCost, pt.x, pt.y)) return;
                     this.triggerSwipe(
                         this.lastDragPos.x,
                         this.lastDragPos.y,
@@ -776,6 +807,10 @@ export class GameScene extends Phaser.Scene {
         const cls = gameState.getClassConfig();
         const musicOn = !gameState.meta.musicMuted;
         const sfxOn = !gameState.meta.sfxMuted;
+        const tierBadge =
+            this.dayCfg.worldTier >= 2
+                ? `<span class="hud-island-chip" style="background:${this.dayCfg.worldTier === 3 ? '#b91c1c' : '#7c3aed'};">سطح ${this.dayCfg.worldTier}</span>`
+                : '';
 
         const wrap = document.createElement('div');
         wrap.id = 'game-hud-wrap';
@@ -785,6 +820,7 @@ export class GameScene extends Phaser.Scene {
           <div class="hud-stage-badge">
             ${icon(cls.icon, 15)}
             <span>${gameState.mode === 'daily' ? 'روزانه ' : ''}م${this.dayCfg.day}</span>
+            ${tierBadge}
             <span class="hud-island-chip" style="background:${this.season.badgeColor};">
               ${this.season.name} • ${this.dayCfg.island.name}
             </span>
@@ -950,7 +986,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     syncGoldHud() {
-        const val = String(gameState.data.gold + this.midDayBonusGold);
+        const val = String(Math.max(0, gameState.data.gold + this.midDayBonusGold));
         const g1 = document.getElementById('hud-gold');
         const g2 = document.getElementById('hud-gold-d');
         if (g1) g1.textContent = val;
@@ -1059,7 +1095,7 @@ export class GameScene extends Phaser.Scene {
 
     addFever(amount) {
         if (this.feverTimer > 0) return;
-        const bonusMul = 1 + gameState.getCardLevel('fever_master') * 0.25;
+        const bonusMul = gameState.getFeverChargeMultiplier();
         this.feverCharge = Math.min(100, this.feverCharge + amount * bonusMul);
         if (this.feverCharge >= 100) {
             this.feverCharge = 0;
@@ -1104,7 +1140,12 @@ export class GameScene extends Phaser.Scene {
 
         const feverMul = this.feverTimer > 0 ? 1.25 : 1.0;
         const comboMul = this.combo >= 5 ? 1.25 : this.combo >= 3 ? 1.12 : 1.0;
-        const earned = Math.max(1, Math.round(baseGold * comboMul * feverMul * gameState.getGoldMultiplier()));
+        // مراحل ۱ و ۲ پاداش ملایم‌تر دارند تا اقتصاد دقیقاً در پایان مرحله ۲ بالانس شود
+        const onboardingMul = this.dayCfg.day <= 2 ? 0.72 : 1.0;
+        const earned = Math.max(
+            1,
+            Math.round(baseGold * comboMul * feverMul * gameState.getGoldMultiplier() * onboardingMul)
+        );
 
         this.midDayBonusGold += earned;
         this.syncGoldHud();
@@ -1184,7 +1225,7 @@ export class GameScene extends Phaser.Scene {
                 fxY,
                 Math.round(wolf.cfg.bounty * 2 * edgeBountyMul),
                 message,
-                42
+                40
             );
         } else if (type === 'rescued' || type === 'scared') {
             this.cameras.main.shake(100, 0.003);
@@ -1257,9 +1298,9 @@ export class GameScene extends Phaser.Scene {
         const pool = ['tulip', 'spicy', 'tulip', 'lavender', 'tulip', 'spicy', 'lavender'];
         const placed = [];
         for (let i = 0; i < count; i++) {
-            let pt = getRandomSafePoint(this.shapeId, 34);
-            for (let attempt = 0; attempt < 20; attempt++) {
-                const candidate = getRandomSafePoint(this.shapeId, 34);
+            let pt = getRandomSafePoint(this.shapeId, 34, this.terrain);
+            for (let attempt = 0; attempt < 25; attempt++) {
+                const candidate = getRandomSafePoint(this.shapeId, 34, this.terrain);
                 if (!placed.some((p) => Math.hypot(p.x - candidate.x, p.y - candidate.y) < 58)) {
                     pt = candidate;
                     break;
@@ -1273,7 +1314,7 @@ export class GameScene extends Phaser.Scene {
     spawnFlockForStage() {
         const flockTypes = gameState.buildStageFlock(this.dayCfg.day);
         flockTypes.forEach((typeId) => {
-            const pt = getRandomSafePoint(this.shapeId, 42);
+            const pt = getRandomSafePoint(this.shapeId, 42, this.terrain);
             this.sheepList.push(new Sheep(this, pt.x, pt.y, typeId));
         });
     }
@@ -1294,17 +1335,18 @@ export class GameScene extends Phaser.Scene {
         const allowed = this.dayCfg.allowedWolves || ['normal'];
         const d = this.dayCfg.day;
 
-        if (d === 5 && !this.signatureWolfSpawned && allowed.includes('swift')) {
+        // ریتم ۲مرحله‌ای: معرفی گرگ سایه در مرحله ۶، گرگ آلفا در مرحله ۸
+        if (d === 6 && !this.signatureWolfSpawned && allowed.includes('swift')) {
             this.signatureWolfSpawned = true;
             return 'swift';
         }
-        if (d === 7 && !this.signatureWolfSpawned && allowed.includes('alpha')) {
+        if (d === 8 && !this.signatureWolfSpawned && allowed.includes('alpha')) {
             this.signatureWolfSpawned = true;
             return 'alpha';
         }
 
         const r = rand();
-        if (allowed.includes('alpha') && r < Math.min(0.42, 0.22 + Math.max(0, d - 7) * 0.04)) {
+        if (allowed.includes('alpha') && r < Math.min(0.42, 0.22 + Math.max(0, d - 8) * 0.04)) {
             return 'alpha';
         }
         if (allowed.includes('swift') && r < 0.56) {
@@ -1416,7 +1458,7 @@ export class GameScene extends Phaser.Scene {
 
         if (this.shapeId === 'twin') {
             const lobeR = (isSafe ? 110 - safeShrink * 0.7 : 144 - beachShrink * 0.75) + offset;
-            const bridgeR = (isSafe ? 40 - safeShrink * 0.4 : 64 - beachShrink * 0.45) + offset * 0.55;
+            const bridgeR = (isSafe ? 44 - safeShrink * 0.4 : 68 - beachShrink * 0.45) + offset * 0.55;
             g.fillStyle(color, alpha);
             g.fillCircle(-148, 0, Math.max(16, lobeR));
             g.fillCircle(148, 0, Math.max(16, lobeR));
@@ -1502,7 +1544,7 @@ export class GameScene extends Phaser.Scene {
 
     decorateIsland() {
         const s = this.season;
-        for (let i = 0; i < 22; i++) {
+        for (let i = 0; i < 20; i++) {
             const pt = getRandomSafePoint(this.shapeId, 24);
             const tuft = this.add
                 .image(pt.x, pt.y, 'grass_tuft')
@@ -1512,7 +1554,7 @@ export class GameScene extends Phaser.Scene {
             if (s.tuftTint !== 0xffffff) tuft.setTint(s.tuftTint);
         }
 
-        for (let i = 0; i < 5; i++) {
+        for (let i = 0; i < 4; i++) {
             const pt = getRandomSafePoint(this.shapeId, 38);
             const bush = this.add
                 .image(pt.x, pt.y, 'bush_prop')
@@ -1542,7 +1584,7 @@ export class GameScene extends Phaser.Scene {
         const isFever = this.feverTimer > 0;
         const swipeRadius = gameState.getSwipeRadius(isFever);
         const frostLevel = gameState.getCardLevel('frost_swipe');
-        const swipeForce = WHISTLE.SWIPE_FORCE * (1 + gameState.getCardLevel('whistle_power') * 0.12);
+        const swipeForce = WHISTLE.SWIPE_FORCE * (1 + gameState.getCardLevel('whistle_power') * 0.14);
 
         this.swipeTrails.push({ x1, y1, x2, y2, life: 0.24, maxLife: 0.24, isFever, frostLevel });
 
@@ -1591,11 +1633,14 @@ export class GameScene extends Phaser.Scene {
 
     triggerWhistle(x, y) {
         const now = this.time.now;
-        if (now - this.lastWhistleTime < WHISTLE.COOLDOWN_MS) return;
-        if (!this.consumeStamina(STAMINA.WHISTLE_COST, x, y)) return;
-        this.lastWhistleTime = now;
+        const cooldownMs = gameState.getWhistleCooldownMs();
+        if (now - this.lastWhistleTime < cooldownMs) return;
 
         const isFever = this.feverTimer > 0;
+        const cost = gameState.getWhistleStaminaCost(isFever);
+        if (!this.consumeStamina(cost, x, y)) return;
+        this.lastWhistleTime = now;
+
         const radius = gameState.getWhistleRadius(isFever);
         const force = gameState.getWhistleForce(isFever);
         const shockLevel = gameState.getCardLevel('shock_whistle');
@@ -1623,7 +1668,7 @@ export class GameScene extends Phaser.Scene {
         const sheepPool = this.inTutorial && this.tutSheep ? [this.tutSheep] : this.sheepList;
         let affectedSheep = 0;
         for (const sheep of sheepPool) {
-            if (sheep.applyWhistle(x, y, radius, force, this.shapeId, magnetLevel)) {
+            if (sheep.applyWhistle(x, y, radius, force, this.shapeId, magnetLevel, this.terrain)) {
                 affectedSheep++;
             }
         }
@@ -1693,7 +1738,18 @@ export class GameScene extends Phaser.Scene {
         if (this.buoysLeft <= 0) return false;
         this.buoysLeft--;
         sound.playBuoyBounce();
-        this.showFloatingText(sheep.x, sheep.y, 'نجات با حلقه!', '#38bdf8');
+
+        // هزینه بالانسی حلقه نجات: کسر ۲۵٪ پاداش وسط مرحله + ۲۵ واحد نفس
+        const penalty = Math.round(this.midDayBonusGold * 0.25);
+        if (penalty > 0) {
+            this.midDayBonusGold = Math.max(0, this.midDayBonusGold - penalty);
+            this.syncGoldHud();
+        }
+        this.stamina = Math.max(5, this.stamina - 25);
+        this.updateStaminaBar();
+
+        const costTxt = penalty > 0 ? ` (-${penalty} سکه)` : ' (-۲۵ نفس)';
+        this.showFloatingText(sheep.x, sheep.y, `نجات با حلقه!${costTxt}`, '#38bdf8');
         ['hud-buoy', 'hud-buoy-d'].forEach((id) => {
             const el = document.getElementById(id);
             if (el) el.textContent = String(this.buoysLeft);
@@ -1782,13 +1838,14 @@ export class GameScene extends Phaser.Scene {
             sound.playVictory();
             const survivingSheep = this.sheepList.filter((s) => s.isAlive);
             const sheepGold = Math.round(
-                survivingSheep.reduce((sum, s) => sum + (SHEEP_TYPES[s.type]?.baseIncome || 5), 0) *
+                survivingSheep.reduce((sum, s) => sum + (SHEEP_TYPES[s.type]?.baseIncome ?? 4), 0) *
                 gameState.getGoldMultiplier()
             );
 
+            const flowerPenalty = gameState.getFlowerValuePenalty();
             const aliveFlowers = this.flowerList.filter((f) => f.isAlive);
             const flowerGold = Math.round(
-                aliveFlowers.reduce((sum, f) => sum + f.config.value, 0) *
+                aliveFlowers.reduce((sum, f) => sum + Math.max(1, f.config.value - flowerPenalty), 0) *
                 (this.edgeMods.flowerValueMul || 1.0)
             );
 
@@ -1796,7 +1853,10 @@ export class GameScene extends Phaser.Scene {
             const missionGold = missionSuccess ? this.mission.rewardGold : 0;
             const bonusGold = this.midDayBonusGold;
             const bossGold = this.bossBountyEarned;
-            const totalGold = sheepGold + flowerGold + bonusGold + missionGold + bossGold;
+            const dogUpkeep = gameState.getDogUpkeepCost();
+
+            const grossGold = sheepGold + flowerGold + bonusGold + missionGold + bossGold;
+            const netGold = Math.max(0, grossGold - dogUpkeep);
 
             const stats = {
                 aliveSheep: survivingSheep.length,
@@ -1808,13 +1868,14 @@ export class GameScene extends Phaser.Scene {
                 missionTitle: missionSuccess ? this.mission.title : null,
                 missionFreeReroll: missionSuccess ? this.mission.freeReroll : 0,
                 bossGold,
-                totalGold,
+                dogUpkeep,
+                totalGold: netGold,
                 edgeDecreeTitle: this.activeDecree?.title || null,
             };
 
             const endUnlocks = gameState.completeDay(
                 survivingSheep.length,
-                totalGold,
+                netGold,
                 stats,
                 missionSuccess ? this.mission : null
             );
@@ -1830,6 +1891,7 @@ export class GameScene extends Phaser.Scene {
                     completedDay,
                     quota: this.quota,
                     stats,
+                    bossMilestone: this.bossMilestone,
                     newlyUnlockedClasses: this.newlyUnlockedClasses,
                     onNextDay: () => this.scene.restart(),
                     onRetryDay: () => {
@@ -1854,6 +1916,7 @@ export class GameScene extends Phaser.Scene {
                     quota: this.quota,
                     stats: null,
                     failReason,
+                    bossMilestone: null,
                     newlyUnlockedClasses: this.newlyUnlockedClasses,
                     onNextDay: () => this.scene.restart(),
                     onRetryDay: () => {
@@ -1943,12 +2006,14 @@ export class GameScene extends Phaser.Scene {
             r.sprite.alpha = 0.1 + (Math.sin(time * 0.002 * r.speed + r.phase) + 1) * 0.06;
         }
 
+        this.terrain?.update(time);
         this.updateSeasonalAmbient(dt, time);
         this.updateSwipeTrails(dt);
 
         if (this.inTutorial && this.tutSheep) {
             this.tutSheep.update(dt, {
                 shapeId: this.shapeId,
+                terrain: null,
                 allSheep: [this.tutSheep],
                 flowers: [],
                 wolves: [],
@@ -2134,7 +2199,7 @@ export class GameScene extends Phaser.Scene {
         }
 
         const totalWindForce =
-            (this.dayCfg.hasWind ? this.dayCfg.windStrength || 34 : 0) +
+            (this.dayCfg.hasWind ? this.dayCfg.windStrength || 32 : 0) +
             (this.edgeMods.windBonus || 0);
         const hasActiveWind = totalWindForce > 0;
         this.updateWindVisuals(dt, hasActiveWind);
@@ -2168,21 +2233,31 @@ export class GameScene extends Phaser.Scene {
 
         for (const f of this.flowerList) f.update(dt);
         for (const d of this.dogList) {
-            d.update(dt, this.sheepList, this.wolfList, this.tideOffset, (ev) => {
-                if (ev?.type === 'scared' || ev?.type === 'hit') {
-                    this.advanceMission('dog_guard', 1);
-                }
-                this.handleWolfAction(ev);
-            });
+            d.update(
+                dt,
+                this.sheepList,
+                this.wolfList,
+                this.tideOffset,
+                (ev) => {
+                    if (ev?.type === 'scared' || ev?.type === 'hit') {
+                        this.advanceMission('dog_guard', 1);
+                    }
+                    this.handleWolfAction(ev);
+                },
+                this.terrain
+            );
         }
 
-        const calmFactor = Math.max(0.35, 1 - gameState.getCardLevel('calm_aura') * 0.25);
+        const calmFactor = Math.max(0.35, 1 - gameState.getCardLevel('calm_aura') * 0.3);
+        const fleeSpeedMul = gameState.getSheepFleeSpeedMul();
+        const flowerEatSpeedMul = gameState.getFlowerEatSpeedMul();
         const isFever = this.feverTimer > 0;
         const hasFireRam = gameState.hasEvolution('fire_ram');
         const hasFlowerMine = gameState.hasEvolution('flower_mine');
 
         const sheepCtx = {
             shapeId: this.shapeId,
+            terrain: this.terrain,
             allSheep: this.sheepList,
             flowers: this.flowerList,
             wolves: this.wolfList,
@@ -2191,6 +2266,8 @@ export class GameScene extends Phaser.Scene {
             windVec,
             flowerRepellent: gameState.data.flowerRepellent,
             calmFactor,
+            fleeSpeedMul,
+            flowerEatSpeedMul,
             goldMul: gameState.getGoldMultiplier(),
             isFever,
             hasFireRam,
@@ -2210,6 +2287,7 @@ export class GameScene extends Phaser.Scene {
 
         const wolfCtx = {
             tideOffset: this.tideOffset,
+            terrain: this.terrain,
             flowers: this.flowerList,
             hasFlowerMine,
             onSheepStolen: () => this.handleSheepLost(),

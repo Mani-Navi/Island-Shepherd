@@ -1,4 +1,5 @@
 import {
+    CARDS,
     HAY_CONFIG,
     REPELLENT_CONFIG,
     EVOLUTIONS,
@@ -39,6 +40,7 @@ export function showEndOfDayModal({
                                       quota,
                                       stats,
                                       failReason = 'quota',
+                                      bossMilestone = null,
                                       newlyUnlockedClasses = [],
                                       onNextDay,
                                       onRetryDay,
@@ -47,24 +49,27 @@ export function showEndOfDayModal({
                                   }) {
     removeModal();
 
+    const shopUnlocked = isVictory && gameState.isCardShopUnlocked(completedDay);
+
     let scoreSubmitted = false;
     let isSubmitting = false;
     let scoreReceipt = null;
     let rerollCount = 0;
     let boughtMap = new Map();
+    let pendingReplaceCardId = null;
     let hayBoughtHere = 0;
     let repellentBoughtHere = false;
     let unlockedEvoToast = null;
-    let mobileTab = 'shop';
+    let mobileTab = shopUnlocked ? 'shop' : 'summary';
     let lastWasMobile = window.innerWidth <= 780;
-    let draftCards = isVictory ? gameState.rollDraftCards(3) : [];
+    let draftCards = shopUnlocked ? gameState.rollDraftCards(3) : [];
 
     const overlay = document.createElement('div');
     overlay.id = 'day-modal';
     overlay.className = 'game-overlay shop-click-guard';
 
     const shell = document.createElement('div');
-    shell.className = isVictory ? 'pop-shell is-wide' : 'pop-shell';
+    shell.className = shopUnlocked ? 'pop-shell is-wide' : 'pop-shell';
     overlay.appendChild(shell);
     document.body.appendChild(overlay);
 
@@ -141,6 +146,62 @@ export function showEndOfDayModal({
         <div class="pop-row-left">
           <span class="pop-sticker">${icon('alert', 19)}</span>
           <div class="pop-sublabel" style="color:#ffffff;">${scoreReceipt.message || 'ثبت رکورد انجام نشد.'}</div>
+        </div>
+      </div>
+    `;
+    };
+
+    const renderBossMilestoneBanner = () => {
+        if (!bossMilestone) return '';
+        return `
+      <div class="pop-row boss-milestone-banner">
+        <div class="pop-row-left" style="align-items:flex-start;">
+          <span class="pop-sticker is-yellow" style="width:44px; height:44px;">${icon('crown', 24)}</span>
+          <div>
+            <div class="pop-label" style="color:#ffe047; font-size:15.5px;">
+              ${bossMilestone.escalationTitle}
+            </div>
+            <div class="pop-sublabel" style="color:#ffffff; margin-top:3px;">
+              ${bossMilestone.escalationDesc}
+            </div>
+            <div class="pop-sublabel" style="color:#fde047; font-weight:900; margin-top:4px;">
+              قابلیت دائمی باز شد — ${bossMilestone.perkTitle}: ${bossMilestone.perkDesc}
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    };
+
+    const renderReplacePicker = () => {
+        if (!pendingReplaceCardId) return '';
+        const newCard = CARDS.find((c) => c.id === pendingReplaceCardId);
+        const ownedIds = gameState.getOwnedCardIds();
+        return `
+      <div class="pop-row is-column replace-picker-box">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+          <div class="pop-label" style="color:#ffe047;">
+            اسلات کارت‌ها پر است! کدام کارت را با «${newCard?.title || ''}» جایگزین می‌کنی؟
+          </div>
+          <button type="button" id="btn-cancel-replace" class="pop-pill is-sm is-danger">انصراف</button>
+        </div>
+        <div class="pop-grid-2">
+          ${ownedIds
+            .map((oid) => {
+                const oc = CARDS.find((c) => c.id === oid);
+                if (!oc) return '';
+                const lvl = gameState.getCardLevel(oid);
+                return `
+              <button type="button" class="pop-pill is-white is-sm replace-choice" data-replace="${oid}" style="justify-content:space-between; width:100%; border-radius:14px; padding:9px 12px;">
+                <span style="display:inline-flex; align-items:center; gap:6px;">
+                  ${icon(oc.icon, 16)}
+                  <span>${oc.title} (سطح ${lvl})</span>
+                </span>
+                <span style="color:#be123c; font-size:11.5px;">جایگزینی</span>
+              </button>
+            `;
+            })
+            .join('')}
         </div>
       </div>
     `;
@@ -254,22 +315,119 @@ export function showEndOfDayModal({
 
         const d = gameState.data;
         const nextIsland = getIslandForDay(d.day, isDaily, gameState.dailyDateKey);
-        const nextCfg = getDayConfig(d.day, isDaily, gameState.dailyDateKey);
+        const nextCfg = getDayConfig(d.day, isDaily, gameState.dailyDateKey, gameState.getWorldTier());
         const nextFlockCount = gameState.buildStageFlock(d.day).length;
+        const nextBoss = nextCfg.bossType ? BOSS_CONFIG[nextCfg.bossType] : null;
+
+        const incomeParts = [
+            `گله (${stats.aliveSheep}): +${stats.sheepGold}`,
+            `گل (${stats.aliveFlowerCount}): +${stats.flowerGold}`,
+        ];
+        if (stats.bonusGold > 0) incomeParts.push(`جوایز: +${stats.bonusGold}`);
+        if (stats.missionGold > 0) incomeParts.push(`ماموریت: +${stats.missionGold}`);
+        if (stats.bossGold > 0) incomeParts.push(`باس: +${stats.bossGold}`);
+        if (stats.dogUpkeep > 0) incomeParts.push(`نگهداری سگ: -${stats.dogUpkeep}`);
+
+        // =========================================================
+        // پایان مرحله ۱: فروشگاه کارت‌ها هنوز قفل است (بازگشایی پس از مرحله ۲)
+        // =========================================================
+        if (!shopUnlocked) {
+            shell.className = 'pop-shell';
+            shell.innerHTML = `
+        <div class="pop-header">
+          <h2 class="pop-title">پیروزی مرحله ${completedDay}</h2>
+          <p class="pop-subtitle">شروع عالی! یک مرحله دیگر تا باز شدن فروشگاه کارت‌های قدرت</p>
+        </div>
+
+        <div class="pop-body">
+          <div class="pop-row">
+            <div class="pop-row-left">
+              <span class="pop-sticker is-yellow">${icon('coin', 20)}</span>
+              <div>
+                <div class="pop-label">درآمد مرحله ۱</div>
+                <div class="pop-sublabel">${incomeParts.join(' • ')}</div>
+              </div>
+            </div>
+            <div style="display:flex; gap:6px;">
+              <span class="pop-pill is-sm" style="pointer-events:none; color:#ffe047;">
+                ${icon('coin', 14)}<span>${d.gold}</span>
+              </span>
+              <span class="pop-pill is-sm" style="pointer-events:none;">
+                ${icon('star', 14)}<span>${d.totalScore}</span>
+              </span>
+            </div>
+          </div>
+
+          <div class="pop-row" style="background:#08486c;">
+            <div class="pop-row-left">
+              <span class="pop-sticker">${icon('lock', 20)}</span>
+              <div>
+                <div class="pop-label">فروشگاه کارت‌ها (قفل تا پایان مرحله ۲)</div>
+                <div class="pop-sublabel">
+                  پس از پایان مرحله ۲ می‌توانی با سکه‌هایت اولین کارت استراتژیک را انتخاب کنی و سبک بازیت را بسازی.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="pop-row">
+            <div class="pop-row-left">
+              <span class="pop-sticker is-yellow">${icon('island', 20)}</span>
+              <div>
+                <div class="pop-label">مرحله ۲: ${nextIsland.name}</div>
+                <div class="pop-sublabel">همان زمین باز برای تمرین بیشتر با گله و گرگ‌ها</div>
+              </div>
+            </div>
+            <span class="pop-pill is-sm" style="pointer-events:none;">
+              ${icon('sheep', 14)}<span>${nextFlockCount} (سهمیه ${gameState.getSurvivalQuota(nextFlockCount, d.day)})</span>
+            </span>
+          </div>
+        </div>
+
+        <div class="pop-footer">
+          <button type="button" id="btn-next-day" class="pop-pill is-yellow is-full">
+            ${icon('play', 19)}
+            <span>شروع مرحله ۲</span>
+          </button>
+        </div>
+
+        <button type="button" id="btn-menu-back" class="pop-back-btn" title="بازگشت به منوی اصلی">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>
+        </button>
+      `;
+
+            shell.querySelector('#btn-next-day').addEventListener('click', () => {
+                sound.playClick();
+                removeModal();
+                onNextDay();
+            });
+            shell.querySelector('#btn-menu-back').addEventListener('click', () => {
+                sound.playClick();
+                removeModal();
+                onReturnToMenu();
+            });
+            return;
+        }
+
+        // =========================================================
+        // فروشگاه کامل (از پایان مرحله ۲ به بعد — ۴ اسلات ← ۵ بعد باس ۵ ← ۶ بعد باس ۱۰)
+        // =========================================================
+        const usedSlots = gameState.getOwnedCardIds().length;
+        const maxSlots = gameState.getMaxCardSlots();
         const hayFull = d.hayCount >= HAY_CONFIG.MAX_STOCK;
         const rerollPrice = gameState.getRerollPrice(rerollCount);
         const activeEvos = gameState.getActiveEvolutions();
-        const nextBoss = nextCfg.bossType ? BOSS_CONFIG[nextCfg.bossType] : null;
 
         const cardsHtml = draftCards
             .map((c) => {
                 const rm = RARITY_LABELS[c.rarity] || RARITY_LABELS.common;
                 const currLvl = gameState.getCardLevel(c.id);
                 const boughtHere = boughtMap.has(c.id);
-                const paidPrice = boughtMap.get(c.id) || 0;
-                const price = boughtHere ? paidPrice : gameState.getCardPrice(c);
+                const purchaseInfo = boughtMap.get(c.id);
+                const price = boughtHere ? purchaseInfo.pricePaid : gameState.getCardPrice(c);
                 const isMaxedBefore = !boughtHere && currLvl >= c.maxLevel;
                 const canAfford = !boughtHere && !isMaxedBefore && d.gold >= price;
+                const needsReplace = !boughtHere && !isMaxedBefore && !gameState.canBuyWithoutReplace(c.id);
                 const evoHint = !boughtHere && !isMaxedBefore ? willUnlockEvolution(c.id) : null;
 
                 const cardClasses = [
@@ -305,8 +463,9 @@ export function showEndOfDayModal({
                 </div>
               </div>
 
-              <div class="pop-label" style="margin-bottom:2px;">${c.title}</div>
-              <div class="pop-sublabel">${c.desc}</div>
+              <div class="pop-label" style="margin-bottom:4px;">${c.title}</div>
+              <div class="card-benefit-line">+ ${c.benefit || c.desc}</div>
+              ${c.cost ? `<div class="card-cost-line">- ${c.cost}</div>` : ''}
               ${
                     evoHint
                         ? `<div class="pop-sublabel" style="color:#ffe047;">آزادسازی: ${evoHint.title}</div>`
@@ -320,7 +479,9 @@ export function showEndOfDayModal({
                         ? `${icon('check', 15)}<span>انتخاب شد (لغو)</span>`
                         : isMaxedBefore
                             ? `<span>حداکثر سطح</span>`
-                            : `${icon('coin', 15)}<span>${price} سکه</span>`
+                            : needsReplace
+                                ? `${icon('coin', 15)}<span>${price} سکه (جایگزینی)</span>`
+                                : `${icon('coin', 15)}<span>${price} سکه</span>`
                 }
             </div>
           </button>
@@ -328,15 +489,9 @@ export function showEndOfDayModal({
             })
             .join('');
 
-        const incomeParts = [
-            `گله (${stats.aliveSheep}): +${stats.sheepGold}`,
-            `گل (${stats.aliveFlowerCount}): +${stats.flowerGold}`,
-        ];
-        if (stats.bonusGold > 0) incomeParts.push(`جوایز: +${stats.bonusGold}`);
-        if (stats.missionGold > 0) incomeParts.push(`ماموریت: +${stats.missionGold}`);
-        if (stats.bossGold > 0) incomeParts.push(`باس: +${stats.bossGold}`);
-
         const alertsHtml = `
+      ${renderBossMilestoneBanner()}
+      ${renderReplacePicker()}
       ${renderReceiptCard()}
       ${
             unlockedEvoToast
@@ -406,7 +561,7 @@ export function showEndOfDayModal({
           <div class="pop-row-left">
             <span class="pop-sticker is-yellow">${icon('coin', 20)}</span>
             <div>
-              <div class="pop-label">درآمد مرحله ${completedDay}</div>
+              <div class="pop-label">درآمد خالص مرحله ${completedDay}</div>
               <div class="pop-sublabel">${incomeParts.join(' • ')}</div>
             </div>
           </div>
@@ -428,7 +583,7 @@ export function showEndOfDayModal({
                 ${nextBoss ? `باس‌فایت ${d.day}: ${nextBoss.name}` : `مرحله ${d.day}: ${nextIsland.name}`}
               </div>
               <div class="pop-sublabel">
-                ${nextBoss ? `روی نقشه ${nextIsland.name} — باس را شکست بده` : nextIsland.desc}
+                ${nextBoss ? `شکست باس = باز شدن اسلات کارت + تشدید چالش` : nextIsland.desc}
               </div>
             </div>
           </div>
@@ -445,12 +600,12 @@ export function showEndOfDayModal({
             shell.innerHTML = `
         <div class="pop-header">
           <h2 class="pop-title">پیروزی مرحله ${completedDay}</h2>
-          <div style="display:flex; justify-content:center; gap:7px; margin-top:4px;">
+          <div style="display:flex; justify-content:center; gap:7px; margin-top:4px; flex-wrap:wrap;">
             <span class="pop-pill is-sm" style="pointer-events:none; color:#ffe047;">
               ${icon('coin', 14)}<span>${d.gold}</span>
             </span>
             <span class="pop-pill is-sm" style="pointer-events:none;">
-              ${icon('star', 14)}<span>${d.totalScore}</span>
+              ${icon('sparkle', 13)}<span>اسلات ${usedSlots}/${maxSlots}</span>
             </span>
             ${
                 nextBoss
@@ -477,7 +632,7 @@ export function showEndOfDayModal({
                 mobileTab === 'shop'
                     ? `
             <div style="display:flex; justify-content:space-between; align-items:center; padding:0 2px;">
-              <span class="pop-sublabel" style="margin:0; font-weight:800;">کلیک مجدد = لغو خرید</span>
+              <span class="pop-sublabel" style="margin:0; font-weight:800;">هر کارت هم سود دارد هم هزینه</span>
               <button type="button" id="btn-reroll" class="pop-pill is-sm ${rerollPrice === 0 ? 'is-green' : ''} ${d.gold < rerollPrice ? 'is-disabled' : ''}">
                 ${icon('dice', 14)}
                 <span>${rerollPrice === 0 ? 'تعویض رایگان' : `تعویض (${rerollPrice})`}</span>
@@ -537,7 +692,9 @@ export function showEndOfDayModal({
             shell.innerHTML = `
         <div class="pop-header">
           <h2 class="pop-title">پیروزی مرحله ${completedDay}</h2>
-          <p class="pop-subtitle">کارت‌های دلخواه را انتخاب کن؛ کلیک مجدد روی هر خرید آن را لغو می‌کند</p>
+          <p class="pop-subtitle">
+            ${completedDay === 2 ? 'فروشگاه کارت‌ها باز شد! هر کارت هم سود دارد هم هزینه؛ سبک چوپانیت را بساز' : 'کارت‌هایت را هوشمندانه انتخاب یا جایگزین کن؛ کلیک مجدد = لغو خرید'}
+          </p>
         </div>
 
         <div class="pop-body">
@@ -545,9 +702,12 @@ export function showEndOfDayModal({
           ${alertsHtml}
 
           <div class="pop-row" style="padding:8px 14px;">
-            <div class="pop-row-left">
+            <div class="pop-row-left" style="flex-wrap:wrap;">
               <span class="pop-sticker" style="width:34px; height:34px;">${icon('sparkle', 18)}</span>
-              <span class="pop-label">فروشگاه کارت‌های قدرت</span>
+              <span class="pop-label">فروشگاه کارت‌ها</span>
+              <span class="pop-pill is-sm ${usedSlots >= maxSlots ? 'is-danger' : 'is-white'}" style="pointer-events:none; padding:4px 10px; font-size:11.5px;">
+                اسلات فعال: ${usedSlots}/${maxSlots}
+              </span>
               ${
                 activeEvos.length > 0
                     ? activeEvos
@@ -587,13 +747,41 @@ export function showEndOfDayModal({
       `;
         }
 
+        // رویدادهای انتخاب/جایگزینی کارت
+        shell.querySelector('#btn-cancel-replace')?.addEventListener('click', () => {
+            sound.playCancel();
+            pendingReplaceCardId = null;
+            render();
+        });
+
+        shell.querySelectorAll('.replace-choice[data-replace]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const oldId = btn.getAttribute('data-replace');
+                const newId = pendingReplaceCardId;
+                if (!oldId || !newId) return;
+                const res = gameState.buyDraftCard(newId, oldId);
+                pendingReplaceCardId = null;
+                if (res.ok) {
+                    boughtMap.set(newId, res);
+                    if (res.newEvolutions.length > 0) {
+                        unlockedEvoToast = res.newEvolutions[0];
+                        sound.playEvolution();
+                    } else {
+                        sound.playFever();
+                    }
+                    render();
+                }
+            });
+        });
+
         shell.querySelectorAll('.pop-card[data-card]').forEach((btn) => {
             btn.addEventListener('click', () => {
                 const cid = btn.getAttribute('data-card');
                 if (boughtMap.has(cid)) {
-                    const paid = boughtMap.get(cid);
-                    if (gameState.refundDraftCard(cid, paid)) {
+                    const info = boughtMap.get(cid);
+                    if (gameState.refundDraftCard(cid, info)) {
                         boughtMap.delete(cid);
+                        pendingReplaceCardId = null;
                         if (unlockedEvoToast && !gameState.hasEvolution(unlockedEvoToast.id)) {
                             unlockedEvoToast = null;
                         }
@@ -603,9 +791,22 @@ export function showEndOfDayModal({
                     return;
                 }
 
+                const card = CARDS.find((c) => c.id === cid);
+                if (!card) return;
+                const price = gameState.getCardPrice(card);
+                if (gameState.getCardLevel(cid) >= card.maxLevel || gameState.data.gold < price) return;
+
+                if (!gameState.canBuyWithoutReplace(cid)) {
+                    sound.playClick();
+                    pendingReplaceCardId = cid;
+                    render();
+                    return;
+                }
+
                 const res = gameState.buyDraftCard(cid);
                 if (res.ok) {
-                    boughtMap.set(cid, res.pricePaid);
+                    boughtMap.set(cid, res);
+                    pendingReplaceCardId = null;
                     if (res.newEvolutions.length > 0) {
                         unlockedEvoToast = res.newEvolutions[0];
                         sound.playEvolution();
@@ -622,6 +823,7 @@ export function showEndOfDayModal({
             if (gameState.spendReroll(rerollPrice)) {
                 if (!wasFree) rerollCount++;
                 boughtMap = new Map();
+                pendingReplaceCardId = null;
                 sound.playBuy();
                 draftCards = gameState.rollDraftCards(3);
                 render();

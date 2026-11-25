@@ -143,7 +143,9 @@ export function showPauseModal({
             shell.innerHTML = `
         <div class="pop-header">
           <h2 class="pop-title">کارت‌های فعال</h2>
-          <p class="pop-subtitle">قدرت‌ها و تکامل‌های فعال در این ران</p>
+          <p class="pop-subtitle">
+            اسلات فعال: ${gameState.getOwnedCardIds().length}/${gameState.getMaxCardSlots()} • سطح چالش: ${gameState.getWorldTier()}
+          </p>
         </div>
 
         <div class="pop-scroll-list">

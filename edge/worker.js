@@ -1,12 +1,12 @@
 /**
- * موتور لبه آروان‌کلاد (ArvanCloud Edge Function / ES Module)
- * قابلیت‌ها:
- * 1) POST /api/run/start        -> صدور توکن رمزنگاری‌شده شروع ران (HMAC-SHA256)
- * 2) POST /api/edge-director    -> اجرای منطق «فرمان زنده لبه» + تولید روایت و کُری باس با AIaaS
- * 3) GET  /api/daily-news       -> خبرنامه کوتاه روزانه جزیره با AIaaS (بدون ایموجی)
- * 4) POST /api/score            -> اعتبارسنجی رمزنگاری‌شده و ریاضی روی لبه + تولید لقب و حماسه AIaaS + ذخیره در دیتابیس/KV
- * 5) GET  /api/leaderboard      -> دریافت جدول رده‌بندی واقعی (کلی و چالش امروز) همراه با القاب AI
- * 6) GET  /api/world-pulse      -> آمار زنده جهانی همه چوپان‌ها روی لبه
+ - موتور لبه آروان‌کلاد (ArvanCloud Edge Function / ES Module)
+ - قابلیت‌ها:
+ - 1) POST /api/run/start        -> صدور توکن رمزنگاری‌شده شروع ران (HMAC-SHA256)
+ - 2) POST /api/edge-director    -> اجرای منطق «فرمان زنده لبه» + تولید روایت و کُری باس با AIaaS
+ - 3) GET  /api/daily-news       -> خبرنامه کوتاه روزانه جزیره با AIaaS (بدون ایموجی)
+ - 4) POST /api/score            -> اعتبارسنجی رمزنگاری‌شده و ریاضی روی لبه + تولید لقب و حماسه AIaaS + ذخیره در دیتابیس/KV
+ - 5) GET  /api/leaderboard      -> دریافت جدول رده‌بندی واقعی (کلی و چالش امروز) همراه با القاب AI
+ - 6) GET  /api/world-pulse      -> آمار زنده جهانی همه چوپان‌ها روی لبه
  */
 
 let memoryGlobalLeaderboard = [];
@@ -55,7 +55,7 @@ function stripEmojis(str) {
 }
 
 /**
- * امضای دیجیتال HMAC-SHA256 روی لبه با Web Crypto API (دارای fallback ایمن)
+ - امضای دیجیتال HMAC-SHA256 روی لبه با Web Crypto API (دارای fallback ایمن)
  */
 async function signEdgePayload(payloadStr, secret) {
     const keySecret = secret || 'arvan-island-shepherd-edge-v5-secret';
@@ -116,7 +116,7 @@ async function verifyRunToken(token, env) {
 }
 
 /**
- * بانک فرمان‌های منطقی لبه (Mutators واقعی که روی مکانیک مرحله اثر می‌گذارند)
+ - بانک فرمان‌های منطقی لبه (Mutators واقعی که روی مکانیک مرحله اثر می‌گذارند)
  */
 const EDGE_DECREES = [
     {
@@ -133,9 +133,9 @@ const EDGE_DECREES = [
         icon: 'flower',
         badgeColor: '#db2777',
         title: 'شکوفه جادویی',
-        effectSummary: 'ارزش گل‌های سالم +۶۰٪ • نفس چوپان ۱۰٪ سریع‌تر',
+        effectSummary: 'ارزش گل‌های سالم +۶۰٪ • گرگ‌ها ۱۰٪ سریع‌تر',
         defaultLore: 'عطر لاله‌های جزیره کل ساحل را پر کرده؛ هر گل سالم گنجی ارزشمند است.',
-        mods: { wolfSpeedMul: 1.0, wolfBountyMul: 1.0, goldZoneMul: 1.0, windBonus: 0, flowerValueMul: 1.6, staminaRegenMul: 1.1 },
+        mods: { wolfSpeedMul: 1.1, wolfBountyMul: 1.0, goldZoneMul: 1.0, windBonus: 0, flowerValueMul: 1.6, staminaRegenMul: 1.1 },
     },
     {
         id: 'sea_gale',
@@ -167,7 +167,7 @@ const EDGE_DECREES = [
 ];
 
 function selectEdgeDecree(day, mode, dateKey) {
-    if (day <= 1) return null;
+    if (day <= 2) return null;
     const seedStr = mode === 'daily' ? `${dateKey}_${day}` : `${day}_${Math.floor(Date.now() / 60000)}`;
     let h = 0;
     for (let i = 0; i < seedStr.length; i++) {
@@ -177,7 +177,7 @@ function selectEdgeDecree(day, mode, dateKey) {
 }
 
 /**
- * فراخوانی یکپارچه AIaaS آروان با تایم‌اوت کوتاه و بدون توقف بازی
+ - فراخوانی یکپارچه AIaaS آروان با تایم‌اوت کوتاه و بدون توقف بازی
  */
 async function callArvanAI(env, systemPrompt, userPrompt, maxTokens = 90) {
     if (!env?.AIAAS_API_KEY || !env?.AIAAS_BASE_URL) return null;
@@ -211,10 +211,10 @@ async function callArvanAI(env, systemPrompt, userPrompt, maxTokens = 90) {
 }
 
 /**
- * لایه ذخیره‌سازی ۳سطحی:
- * ۱) دیتابیس آروان از طریق REST/PostgREST Gateway (در صورت تنظیم ARVAN_DB_URL)
- * ۲) فضای KV آروان‌کلاد (LEADERBOARD_KV)
- * ۳) حافظه نود لبه
+ - لایه ذخیره‌سازی ۳سطحی:
+ - ۱) دیتابیس آروان از طریق REST/PostgREST Gateway (در صورت تنظیم ARVAN_DB_URL)
+ - ۲) فضای KV آروان‌کلاد (LEADERBOARD_KV)
+ - ۳) حافظه نود لبه
  */
 async function getLeaderboard(env, mode = 'normal', dateKey = null) {
     const isDaily = mode === 'daily';
@@ -321,7 +321,7 @@ async function bumpWorldPulse(env, { sheepSaved = 0, wolvesDefeated = 0, bossesS
 }
 
 /**
- * اعتبارسنجی چندلایه ضدتقلب روی لبه (ریاضی + زمان‌بندی + امضای رمزنگاری‌شده HMAC)
+ - اعتبارسنجی چندلایه ضدتقلب روی لبه (ریاضی + زمان‌بندی + امضای رمزنگاری‌شده HMAC)
  */
 async function validateRunOnEdge(body, env) {
     const { nickname, score, dayReached, runLog, mode, runToken } = body || {};
@@ -362,9 +362,9 @@ async function validateRunOnEdge(body, env) {
             return { valid: false, reason: 'درآمد ثبت‌شده با قوانین بازی همخوانی ندارد.' };
         }
 
-        recomputedScore += entry.goldEarned + entry.day * 75 + entry.sheepSurvived * 15;
+        recomputedScore += entry.goldEarned + entry.day * 50 + entry.sheepSurvived * 12;
         totalSheepSaved += entry.sheepSurvived;
-        minRequiredMs += entry.day % 5 === 0 ? 12000 : 34000;
+        minRequiredMs += entry.day % 5 === 0 ? 12000 : 28000;
     }
 
     if (recomputedScore !== score) {
@@ -394,7 +394,7 @@ async function validateRunOnEdge(body, env) {
 }
 
 /**
- * ساخت لقب و حماسه اختصاصی چوپان با AIaaS (با fallback هوشمند و متنوع)
+ - ساخت لقب و حماسه اختصاصی چوپان با AIaaS (با fallback هوشمند و متنوع)
  */
 async function generateShepherdChronicle(env, { nickname, score, dayReached, classId, wolvesDefeated = 0, bossesDefeated = 0 }) {
     const fallbackTitles = [

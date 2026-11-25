@@ -297,9 +297,9 @@ const EDGE_DECREES = [
     icon: 'flower',
     badgeColor: '#db2777',
     title: 'شکوفه جادویی',
-    effectSummary: 'ارزش گل‌های سالم +۶۰٪ • نفس چوپان ۱۰٪ سریع‌تر',
+    effectSummary: 'ارزش گل‌های سالم +۶۰٪ • گرگ‌ها ۱۰٪ سریع‌تر',
     defaultLore: 'عطر لاله‌های جزیره کل ساحل را پر کرده؛ هر گل سالم گنجی ارزشمند است.',
-    mods: { wolfSpeedMul: 1.0, wolfBountyMul: 1.0, goldZoneMul: 1.0, windBonus: 0, flowerValueMul: 1.6, staminaRegenMul: 1.1 },
+    mods: { wolfSpeedMul: 1.1, wolfBountyMul: 1.0, goldZoneMul: 1.0, windBonus: 0, flowerValueMul: 1.6, staminaRegenMul: 1.1 },
   },
   {
     id: 'sea_gale',
@@ -324,16 +324,16 @@ const EDGE_DECREES = [
     icon: 'sparkle',
     badgeColor: '#eab308',
     title: 'جشنواره پشم زرین',
-    effectSummary: 'تولید پشم گوسفندان ۲ برابر • ارزش پشم +۵۰٪',
+    effectSummary: 'تولید پشم گوسفندان ۲ برابر • گرگ‌ها ۱۲٪ سریع‌تر',
     defaultLore: 'پشم گوسفندان زیر نور خورشید مثل طلا می‌درخشد و با هر گام سکه می‌بارد.',
-    mods: { wolfSpeedMul: 1.0, wolfBountyMul: 1.0, goldZoneMul: 1.2, windBonus: 0, flowerValueMul: 1.0, staminaRegenMul: 1.0 },
+    mods: { wolfSpeedMul: 1.12, wolfBountyMul: 1.0, goldZoneMul: 1.2, windBonus: 0, flowerValueMul: 1.0, staminaRegenMul: 1.0 },
   },
   {
     id: 'bee_fury',
     icon: 'bee',
     badgeColor: '#d97706',
     title: 'خشم کندو',
-    effectSummary: 'کندوی زنبور بدون زمان انتظار • پرتاب گرگ‌ها دورتر',
+    effectSummary: 'کندوی زنبور بدون زمان انتظار • گرگ‌ها ۸٪ سریع‌تر',
     defaultLore: 'زنبورهای جزیره امروز بی‌قرارند؛ کافیست اشاره کنی تا گرگ‌ها را فراری دهند.',
     mods: { wolfSpeedMul: 1.08, wolfBountyMul: 1.2, goldZoneMul: 1.0, windBonus: 0, flowerValueMul: 1.0, staminaRegenMul: 1.0 },
   },
@@ -387,14 +387,14 @@ const EDGE_DECREES = [
     icon: 'coin',
     badgeColor: '#b45309',
     title: 'گنج ساحلی',
-    effectSummary: 'جایزه دفع گرگ +۳۰٪ • ارزش گل‌ها +۳۰٪',
+    effectSummary: 'جایزه دفع گرگ +۳۰٪ • گرگ‌ها ۸٪ سریع‌تر و باد ساحلی',
     defaultLore: 'امواج طلایی به ساحل رسیده‌اند؛ دفاع بی‌نقص از گله و باغچه پاداش سنگینی دارد.',
     mods: { wolfSpeedMul: 1.08, wolfBountyMul: 1.3, goldZoneMul: 1.25, windBonus: 8, flowerValueMul: 1.3, staminaRegenMul: 1.0 },
   },
 ];
 
 function selectEdgeDecree(day, mode, dateKey) {
-  if (day <= 1) return null;
+  if (day <= 2) return null;
   let offset = 0;
   const seedStr = mode === 'daily' ? dateKey : String(new Date().getUTCDate());
   for (let i = 0; i < seedStr.length; i++) offset += seedStr.charCodeAt(i);
@@ -565,9 +565,9 @@ async function validateRunOnEdge(body) {
     if (typeof entry.goldEarned !== 'number' || entry.goldEarned < 0 || entry.goldEarned > maxPlausibleGold) {
       return { valid: false, reason: 'درآمد غیرمجاز است.' };
     }
-    recomputedScore += entry.goldEarned + entry.day * 75 + entry.sheepSurvived * 15;
+    recomputedScore += entry.goldEarned + entry.day * 50 + entry.sheepSurvived * 12;
     totalSheepSaved += entry.sheepSurvived;
-    minRequiredMs += entry.day % 5 === 0 ? 12000 : 34000;
+    minRequiredMs += entry.day % 5 === 0 ? 12000 : 28000;
   }
 
   if (recomputedScore !== score) return { valid: false, reason: 'امتیاز با محاسبه لبه مطابقت ندارد.' };
