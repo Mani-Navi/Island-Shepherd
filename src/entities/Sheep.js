@@ -27,7 +27,8 @@ export class Sheep {
         this.fleeTimer = 0;
         this.effectTimer = 0;
         this.frostTimer = 0;
-        this.mildChillTimer = 0; // هزینه کارت باد یخی روی گوسفندهای معمولی
+        this.mildChillTimer = 0;
+        this.grabImmunityTimer = 0;
         this.scatterBadgeTimer = 0;
         this.walkPhase = Math.random() * Math.PI * 2;
         this.headbuttCooldown = 0;
@@ -336,11 +337,14 @@ export class Sheep {
     releaseFromWolf(shapeId = 'classic', terrain = null) {
         if (!this.container) return;
         this.clearEffects();
+        this.grabImmunityTimer = 1.25;
         const safe = getSafeDirection(this.x, this.y, shapeId, terrain);
-        this.vx = safe.x * 170;
-        this.vy = safe.y * 170;
+        this.container.x += safe.x * 18;
+        this.container.y += safe.y * 18;
+        this.vx = safe.x * 210;
+        this.vy = safe.y * 210;
         this.state = 'flee';
-        this.fleeTimer = 0.75;
+        this.fleeTimer = 0.8;
         this.spawnRescueHearts();
         sound.playBaa('happy');
         this.playHopAnim();
@@ -419,7 +423,6 @@ export class Sheep {
             if (this.state === 'zoomies') {
                 this.applyFrost(1.5 + frostLevel * 0.6);
             } else {
-                // هزینه بالانسی کارت باد یخی: گوسفندهای مسیر باد هم کوتاه‌مدت کند می‌شوند
                 this.applyMildChill(1.35);
             }
         }
@@ -572,6 +575,10 @@ export class Sheep {
         } = ctx;
 
         const now = this.scene.time.now;
+
+        if (this.grabImmunityTimer > 0) {
+            this.grabImmunityTimer = Math.max(0, this.grabImmunityTimer - dt);
+        }
 
         if (this.state === 'floating') {
             this.body.rotation = Math.sin(now * 0.008) * 0.28;
@@ -758,11 +765,15 @@ export class Sheep {
             steerY += windVec.y;
         }
 
-        // نیروی سر خوردن تپه شیب‌دار
+        // نیروی قوی و محسوس تپه شیب‌دار لغزنده
+        let onSlope = false;
         if (terrain && !isTutorial) {
             const slope = terrain.getSlopeForceAt(this.x, this.y);
-            steerX += slope.x;
-            steerY += slope.y;
+            if (slope.x !== 0 || slope.y !== 0) {
+                onSlope = true;
+                steerX += slope.x;
+                steerY += slope.y;
+            }
         }
 
         let attractedToHay = false;
@@ -862,7 +873,9 @@ export class Sheep {
         this.vx += steerX * dt;
         this.vy += steerY * dt;
 
-        const damping = Math.exp(-SHEEP_CONFIG.FRICTION * dt);
+        // کاهش اصطکاک روی تپه شیب‌دار لغزنده
+        const frictionMul = terrain && !isTutorial ? terrain.getFrictionMultiplierAt(this.x, this.y) : 1.0;
+        const damping = Math.exp(-SHEEP_CONFIG.FRICTION * frictionMul * dt);
         this.vx *= damping;
         this.vy *= damping;
 
@@ -877,10 +890,14 @@ export class Sheep {
                             ? SHEEP_CONFIG.WANDER_SPEED * 1.85
                             : SHEEP_CONFIG.WANDER_SPEED * 1.32 * this.typeCfg.wanderSpeedMul;
 
+        if (onSlope) {
+            maxSpeed = Math.max(maxSpeed, 165);
+        }
+
         if (this.frostTimer > 0 && !fireMode) maxSpeed *= 0.5;
         else if (this.mildChillTimer > 0 && !fireMode) maxSpeed *= 0.75;
 
-        // کاهش سرعت در گل‌ولای و خارزار
+        // کاهش شدید سرعت در گل‌ولای و خارزار
         if (terrain && !isTutorial) {
             maxSpeed *= terrain.getSpeedMultiplierAt(this.x, this.y);
         }

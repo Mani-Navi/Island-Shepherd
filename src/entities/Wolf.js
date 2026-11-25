@@ -126,12 +126,12 @@ export class Wolf {
         }
     }
 
-    drownInWater(onWolfAction, terrain = null) {
+    drownInWater(onWolfAction) {
         if (this.isDone || !this.container) return;
         this.isDone = true;
 
         if (this.capturedSheep) {
-            this.capturedSheep.releaseFromWolf(this.shapeId, terrain);
+            this.capturedSheep.releaseFromWolf(this.shapeId, this.scene.terrain);
             this.capturedSheep = null;
         }
 
@@ -400,7 +400,7 @@ export class Wolf {
             if (!s.container || !s.isAlive || s.state === 'captured' || s.state === 'floating') continue;
             let dist = Math.hypot(s.x - this.x, s.y - this.y);
             if (s.state === 'sleep') dist *= 0.65;
-            if (s.type === 'golden') dist *= 0.72; // هزینه کارت لمس طلایی: گرگ‌ها حریص‌تر به سمت گوسفند طلایی
+            if (s.type === 'golden') dist *= 0.72;
             if (s.type === 'ram') dist *= 1.35;
             if (dist < bestScore) {
                 bestScore = dist;
@@ -414,7 +414,6 @@ export class Wolf {
         if (this.isDone || !this.container || !this.body || !this.body.scene) return;
         const {
             tideOffset = 0,
-            terrain = null,
             flowers = [],
             hasFlowerMine = false,
             onSheepStolen = null,
@@ -453,13 +452,6 @@ export class Wolf {
         this.pushVx *= damping;
         this.pushVy *= damping;
 
-        // نیروی تپه شیب‌دار روی گرگ (امکان سر دادن گرگ به آبگیر یا دریا!)
-        if (terrain && this.hasEnteredLand && this.state !== 'flee') {
-            const slope = terrain.getSlopeForceAt(this.x, this.y);
-            this.pushVx += slope.x * 1.45 * dt;
-            this.pushVy += slope.y * 1.45 * dt;
-        }
-
         let moveVx = 0;
         let moveVy = 0;
 
@@ -472,9 +464,8 @@ export class Wolf {
             }
         } else {
             this.body.x = 0;
+            // عوامل طبیعی (گل‌ولای، شیب، آبگیر) روی گرگ تاثیر ندارند — فقط کارت باد یخی بازیکن اثر دارد
             const frostMul = this.frostTimer > 0 ? 0.5 : 1.0;
-            const mudMul = terrain ? terrain.getSpeedMultiplierAt(this.x, this.y) : 1.0;
-            const envMul = frostMul * mudMul;
 
             if (this.state === 'hunt') {
                 const target = this.findBestTarget(allSheep);
@@ -484,7 +475,7 @@ export class Wolf {
                     const dx = target.x - this.x;
                     const dy = target.y - this.y;
                     const dist = Math.hypot(dx, dy) || 1;
-                    const spd = this.cfg.huntSpeed * this.speedScale * envMul;
+                    const spd = this.cfg.huntSpeed * this.speedScale * frostMul;
                     moveVx = (dx / dist) * spd;
                     moveVy = (dy / dist) * spd;
 
@@ -503,7 +494,7 @@ export class Wolf {
                     this.state = 'hunt';
                 } else {
                     const outAngle = Math.atan2(this.y, this.x);
-                    const spd = this.cfg.carrySpeed * Math.min(1.35, this.speedScale) * envMul;
+                    const spd = this.cfg.carrySpeed * Math.min(1.35, this.speedScale) * frostMul;
                     moveVx = Math.cos(outAngle) * spd;
                     moveVy = Math.sin(outAngle) * spd;
 
@@ -541,22 +532,16 @@ export class Wolf {
         this.container.x += totalVx * dt;
         this.container.y += totalVy * dt;
 
-        // برخورد با صخره‌ها و تنه درخت‌ها
-        if (terrain && this.state !== 'flee') {
-            terrain.resolveSolidCollision(this, 17);
-        }
-
-        const zone = getZoneAt(this.x, this.y, this.shapeId, tideOffset, terrain);
-        const insidePond = terrain && terrain.getPondZoneAt(this.x, this.y) === 'water';
-
-        if (zone !== 'water') {
+        // فقط دریای بیرونی جزیره (بدون آبگیر داخلی) باعث ناک‌اوت آبی گرگ می‌شود
+        const outerZone = getZoneAt(this.x, this.y, this.shapeId, tideOffset, null);
+        if (outerZone !== 'water') {
             this.hasEnteredLand = true;
         } else if (
             this.hasEnteredLand &&
-            (this.pushedByPlayerTimer > 0 || insidePond) &&
+            this.pushedByPlayerTimer > 0 &&
             (this.state === 'hunt' || this.state === 'carrying')
         ) {
-            this.drownInWater(onWolfAction, terrain);
+            this.drownInWater(onWolfAction);
             return;
         }
 

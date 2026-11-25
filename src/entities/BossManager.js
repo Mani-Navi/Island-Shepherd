@@ -30,14 +30,12 @@ export class BossManager {
 
         this.gfx = scene.add.graphics().setDepth(21);
 
-        // حالت کراکن
         this.krakenHead = null;
         this.tentacles = [];
         this.tentacleTimer = 1.6;
         this.bossSummonTimer = 8.5;
         this.suctionPulse = 0;
 
-        // حالت شاه گرگ‌ها
         this.king = null;
         this.kingDashTimer = 2.6;
         this.kingHowlTimer = 6.5;
@@ -221,7 +219,7 @@ export class BossManager {
 
         if (this.king?.container) {
             if (this.king.capturedSheep) {
-                this.king.capturedSheep.releaseFromWolf(this.shapeId);
+                this.king.capturedSheep.releaseFromWolf(this.shapeId, this.scene.terrain);
                 this.king.capturedSheep = null;
             }
             const c = this.king.container;
@@ -243,10 +241,9 @@ export class BossManager {
     }
 
     // =========================================================
-    // باس ۱: اختاپوس دریایی (کراکن) — کاملاً واضح و ۳ فازه
+    // باس ۱: اختاپوس دریایی (کراکن)
     // =========================================================
     initKraken() {
-        // قرارگیری دقیق سر کراکن در لبه شمالی آب (کاملاً پایین‌تر از نوار HUD و در دید کامل بازیکن)
         this.krakenBaseY = -246;
         this.krakenHead = this.scene.add
             .image(0, this.krakenBaseY, 'kraken_head')
@@ -265,16 +262,18 @@ export class BossManager {
         const alive = sheepList.filter((s) => s.container && s.isAlive && s.state !== 'captured' && s.state !== 'floating');
         let pt;
 
-        // هدف‌گیری هوشمند کنار گوسفندها برای ایجاد فشار واقعی
         if (alive.length > 0 && rand() < 0.72) {
             const target = alive[Math.floor(rand() * alive.length)];
             const a = rand() * Math.PI * 2;
             const d = 16 + rand() * 34;
             const tx = target.x + Math.cos(a) * d;
             const ty = target.y + Math.sin(a) * d;
-            pt = getZoneAt(tx, ty, this.shapeId, tideOffset) !== 'water' ? { x: tx, y: ty } : { x: target.x, y: target.y };
+            const ok =
+                getZoneAt(tx, ty, this.shapeId, tideOffset, this.scene.terrain) !== 'water' &&
+                (!this.scene.terrain || !this.scene.terrain.isBlockedForSpawn(tx, ty, 18));
+            pt = ok ? { x: tx, y: ty } : { x: target.x, y: target.y };
         } else {
-            pt = getRandomSafePoint(this.shapeId, tideOffset + 12);
+            pt = getRandomSafePoint(this.shapeId, tideOffset + 12, this.scene.terrain);
         }
 
         const roll = rand();
@@ -345,22 +344,20 @@ export class BossManager {
             if (!s.container || !s.isAlive || s.state === 'captured' || s.state === 'floating') continue;
             const d = Math.hypot(s.x - t.x, s.y - t.y);
             if (!grabbedOne && d < 28) {
-                // شاخک گوسفند را مستقیم به اعماق می‌کشد!
                 grabbedOne = true;
                 s.finishStolen();
                 sound.playBaa('scared');
                 this.scene.showFloatingText(t.x, t.y, 'کراکن گوسفند را بلعید!', '#fca5a5');
                 if (this.callbacks.onSheepLost) this.callbacks.onSheepLost();
             } else if (d < t.radius + 45) {
-                // بقیه گوسفندهای نزدیک را با قدرت به سمت لبه‌های آب پرتاب می‌کند
-                const safe = getSafeDirection(s.x, s.y, this.shapeId);
+                const safe = getSafeDirection(s.x, s.y, this.shapeId, this.scene.terrain);
                 s.applyBlast(-safe.x, -safe.y, 265);
             }
         }
     }
 
     // =========================================================
-    // باس ۲: شاه گرگ‌ها — یورش‌های پیاپی، موج زوزه و احضار گله
+    // باس ۲: شاه گرگ‌ها (باس نهایی مرحله ۱۰)
     // =========================================================
     initWolfKing() {
         const container = this.scene.add.container(0, -240);
@@ -380,7 +377,7 @@ export class BossManager {
             pushVx: 0,
             pushVy: 0,
             facingAngle: Math.PI / 2,
-            state: 'chase', // 'chase' | 'telegraph' | 'dash' | 'carrying'
+            state: 'chase',
             stateTimer: 0,
             dashChainLeft: 0,
             dashDirX: 0,
@@ -390,6 +387,7 @@ export class BossManager {
             pushedTimer: 0,
             hasEnteredLand: false,
             stunTimer: 0,
+            grabCooldown: 0,
         };
     }
 
@@ -431,11 +429,10 @@ export class BossManager {
             onComplete: () => ring.destroy(),
         });
 
-        // موج زوزه گوسفندها را به سمت ساحل و دریا هل می‌دهد!
         for (const s of sheepList) {
             if (!s.container || !s.isAlive || s.state === 'captured' || s.state === 'floating') continue;
             if (Math.hypot(s.x - k.x, s.y - k.y) < 230) {
-                const safe = getSafeDirection(s.x, s.y, this.shapeId);
+                const safe = getSafeDirection(s.x, s.y, this.shapeId, this.scene.terrain);
                 s.applyBlast(-safe.x, -safe.y, this.phase === 3 ? 215 : 175);
             }
         }
@@ -496,14 +493,19 @@ export class BossManager {
                 const dx = k.x - x;
                 const dy = k.y - y;
                 const len = Math.hypot(dx, dy) || 1;
-                const kb = isFever ? 300 : 225;
+                const kb = isFever ? 300 : 235;
                 k.pushVx = (dx / len) * kb;
                 k.pushVy = (dy / len) * kb;
 
+                let rescuedMsg = 'ضربه به شاه گرگ‌ها!';
                 if (k.capturedSheep) {
-                    k.capturedSheep.releaseFromWolf(this.shapeId);
+                    const released = k.capturedSheep;
                     k.capturedSheep = null;
+                    k.grabCooldown = 1.45;
+                    k.stunTimer = Math.max(k.stunTimer, 0.55);
                     k.state = 'chase';
+                    released.releaseFromWolf(this.shapeId, this.scene.terrain);
+                    rescuedMsg = 'گوسفند از شاه گرگ‌ها آزاد شد!';
                 }
 
                 k.body.setTint(0xffffff);
@@ -515,7 +517,7 @@ export class BossManager {
                 });
 
                 const dmg = isFever ? 2 : 1;
-                this.damageBoss(dmg, k.x, k.y, 'ضربه به شاه گرگ‌ها!', 3);
+                this.damageBoss(dmg, k.x, k.y, rescuedMsg, 3);
             }
         }
     }
@@ -540,14 +542,12 @@ export class BossManager {
     }
 
     updateKraken(dt, time, sheepList, tideOffset) {
-        // انیمیشن زنده سر کراکن روی آب در بخش بالایی (کاملاً مرئی)
         if (this.krakenHead) {
             this.krakenHead.x = Math.sin(time * 0.0014) * 58;
             this.krakenHead.y = this.krakenBaseY + Math.sin(time * 0.0032) * 8;
             this.krakenHead.rotation = Math.sin(time * 0.002) * 0.09;
         }
 
-        // مکش اقیانوس در فاز ۲ و ۳ (گله را به سمت آب می‌کشد!)
         if (this.phase >= 2) {
             this.suctionPulse += dt * (this.phase === 3 ? 4.5 : 3.0);
             const pullForce = this.phase === 3 ? 52 : 32;
@@ -557,13 +557,12 @@ export class BossManager {
 
             for (const s of sheepList) {
                 if (!s.container || !s.isAlive || s.state === 'captured' || s.state === 'floating') continue;
-                const safe = getSafeDirection(s.x, s.y, this.shapeId);
+                const safe = getSafeDirection(s.x, s.y, this.shapeId, this.scene.terrain);
                 s.vx -= safe.x * pullForce * dt;
                 s.vy -= safe.y * pullForce * dt;
             }
         }
 
-        // احضار گرگ پشتیبان در فاز ۲ و ۳
         if (this.phase >= 2 && this.callbacks.onSummonWolf) {
             this.bossSummonTimer -= dt;
             if (this.bossSummonTimer <= 0) {
@@ -572,7 +571,6 @@ export class BossManager {
             }
         }
 
-        // احضار موج شاخک‌ها
         this.tentacleTimer -= dt;
         const maxSimultaneous = this.phase === 3 ? 4 : this.phase === 2 ? 3 : 2;
         if (this.tentacleTimer <= 0 && this.tentacles.length < maxSimultaneous + 1) {
@@ -590,7 +588,6 @@ export class BossManager {
                         : this.cfg.tentacleInterval;
         }
 
-        // آپدیت شاخک‌ها و کشیدن دایره هشدار و نقاط جان
         for (const t of this.tentacles) {
             if (t.done) continue;
             t.timer -= dt;
@@ -601,13 +598,11 @@ export class BossManager {
             this.gfx.lineStyle(3.5, ratio > 0.72 ? 0xef4444 : 0xe879f9, 0.95);
             this.gfx.strokeCircle(t.x, t.y, t.radius * (1.28 - ratio * 0.28));
 
-            // نمایش خط اتصال نامرئی/کم‌رنگ به سمت سر کراکن
             if (this.krakenHead) {
                 this.gfx.lineStyle(2, 0xc084fc, 0.16);
                 this.gfx.lineBetween(this.krakenHead.x, this.krakenHead.y + 24, t.x, t.y);
             }
 
-            // نمایش دایره‌های زره برای شاخک‌های چندضربه‌ای
             if (t.maxHp > 1) {
                 const gap = 10;
                 const sx = t.x - ((t.maxHp - 1) * gap) / 2;
@@ -641,8 +636,8 @@ export class BossManager {
         if (!k || !k.container) return;
 
         if (k.pushedTimer > 0) k.pushedTimer -= dt;
+        if (k.grabCooldown > 0) k.grabCooldown = Math.max(0, k.grabCooldown - dt);
 
-        // احضار زیرمجموعه‌ها
         this.kingSummonTimer -= dt;
         if (this.kingSummonTimer <= 0 && this.callbacks.onSummonWolf) {
             this.kingSummonTimer = this.phase === 3 ? 3.8 : this.phase === 2 ? 4.4 : this.cfg.summonInterval;
@@ -650,8 +645,7 @@ export class BossManager {
             this.callbacks.onSummonWolf(wType);
         }
 
-        // موج زوزه در فاز ۲ و ۳
-        if (this.phase >= 2 && k.state === 'chase') {
+        if (this.phase >= 2 && k.state === 'chase' && k.stunTimer <= 0) {
             this.kingHowlTimer -= dt;
             if (this.kingHowlTimer <= 0) {
                 this.kingHowlTimer = this.phase === 3 ? 5.8 : 7.8;
@@ -666,9 +660,12 @@ export class BossManager {
         let moveVx = 0;
         let moveVy = 0;
 
-        if (k.state === 'telegraph') {
+        if (k.stunTimer > 0) {
+            k.stunTimer = Math.max(0, k.stunTimer - dt);
+            k.body.x = Math.sin(time * 0.06) * 3;
+            if (k.stunTimer <= 0) k.body.x = 0;
+        } else if (k.state === 'telegraph') {
             k.stateTimer -= dt;
-            // کشیدن خط قرمز هشدار مسیر یورش
             this.gfx.lineStyle(6, 0xef4444, 0.55);
             this.gfx.lineBetween(k.x, k.y, k.x + k.dashDirX * 260, k.y + k.dashDirY * 260);
             this.gfx.lineStyle(2, 0xfef08a, 0.9);
@@ -686,16 +683,25 @@ export class BossManager {
             moveVx = k.dashDirX * dashSpd;
             moveVy = k.dashDirY * dashSpd;
 
-            // گرفتن گوسفند در مسیر یورش
-            for (const s of sheepList) {
-                if (!s.container || !s.isAlive || s.state === 'captured' || s.state === 'floating') continue;
-                if (Math.hypot(s.x - k.x, s.y - k.y) < 30) {
-                    k.capturedSheep = s;
-                    k.state = 'carrying';
-                    k.dashChainLeft = 0;
-                    s.captureByWolf();
-                    sound.playBaa('scared');
-                    break;
+            if (k.grabCooldown <= 0) {
+                for (const s of sheepList) {
+                    if (
+                        !s.container ||
+                        !s.isAlive ||
+                        s.state === 'captured' ||
+                        s.state === 'floating' ||
+                        (s.grabImmunityTimer || 0) > 0
+                    ) {
+                        continue;
+                    }
+                    if (Math.hypot(s.x - k.x, s.y - k.y) < 30) {
+                        k.capturedSheep = s;
+                        k.state = 'carrying';
+                        k.dashChainLeft = 0;
+                        s.captureByWolf();
+                        sound.playBaa('scared');
+                        break;
+                    }
                 }
             }
 
@@ -730,7 +736,6 @@ export class BossManager {
                 }
             }
         } else {
-            // حالت تعقیب عادی + شمارش برای شروع یورش بعدی
             this.kingDashTimer -= dt;
             if (this.kingDashTimer <= 0) {
                 k.dashChainLeft = this.phase === 3 ? 2 : this.phase === 2 ? 1 : 0;
@@ -754,7 +759,7 @@ export class BossManager {
                     moveVx = (dx / len) * spd;
                     moveVy = (dy / len) * spd;
 
-                    if (bestD < 28) {
+                    if (bestD < 28 && k.grabCooldown <= 0 && (target.grabImmunityTimer || 0) <= 0) {
                         k.capturedSheep = target;
                         k.state = 'carrying';
                         target.captureByWolf();
@@ -770,11 +775,11 @@ export class BossManager {
         k.y += totalVy * dt;
         k.container.setPosition(k.x, k.y);
 
-        const zone = getZoneAt(k.x, k.y, this.shapeId, tideOffset);
-        if (zone !== 'water') {
+        // فقط دریای بیرونی جزیره (بدون آبگیر داخلی) باعث سقوط شاه گرگ‌ها در آب می‌شود
+        const outerZone = getZoneAt(k.x, k.y, this.shapeId, tideOffset, null);
+        if (outerZone !== 'water') {
             k.hasEnteredLand = true;
         } else if (k.hasEnteredLand && k.pushedTimer > 0 && k.state !== 'carrying') {
-            // پرت شدن شاه گرگ‌ها به آب -> ۲ واحد آسیب و پرش برگشتی از سمت مخالف
             sound.playWolfSplash();
             k.hasEnteredLand = false;
             k.pushedTimer = 0;
@@ -789,7 +794,6 @@ export class BossManager {
             return;
         }
 
-        // نگه داشتن شاه گرگ‌ها داخل کادر میدان
         const distFromCenter = Math.hypot(k.x, k.y);
         if (distFromCenter > 315 && k.state !== 'carrying') {
             k.x = (k.x / distFromCenter) * 315;
@@ -798,7 +802,7 @@ export class BossManager {
         }
 
         const speed = Math.hypot(totalVx, totalVy);
-        if (speed > 6 && k.state !== 'telegraph') {
+        if (speed > 6 && k.state !== 'telegraph' && k.stunTimer <= 0) {
             const ta = Math.atan2(totalVy, totalVx);
             k.facingAngle = Phaser.Math.Angle.RotateTo(k.facingAngle, ta, dt * 11);
             k.body.rotation = k.facingAngle;

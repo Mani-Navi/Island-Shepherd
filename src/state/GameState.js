@@ -5,6 +5,7 @@ import {
     DOG_CONFIG,
     EVOLUTIONS,
     HAY_CONFIG,
+    MAX_CAMPAIGN_DAY,
     REPELLENT_CONFIG,
     REROLL_BASE_PRICE,
     SHEPHERD_CLASSES,
@@ -101,6 +102,7 @@ class GameStateManager {
             if (!raw) return null;
             const parsed = JSON.parse(raw);
             if (!parsed || typeof parsed.day !== 'number') return null;
+            if (parsed.campaignCompleted || parsed.day > MAX_CAMPAIGN_DAY) return null;
             return {
                 runToken: null,
                 edgeSigned: false,
@@ -108,6 +110,7 @@ class GameStateManager {
                 runBossesDefeated: 0,
                 bossesBeaten: [],
                 bossPerks: [],
+                campaignCompleted: false,
                 ...parsed,
             };
         } catch {
@@ -121,9 +124,11 @@ class GameStateManager {
             if (!raw) return null;
             const parsed = JSON.parse(raw);
             if (!parsed || typeof parsed.day !== 'number') return null;
+            if (parsed.campaignCompleted || parsed.day > MAX_CAMPAIGN_DAY) return null;
             return {
                 bossesBeaten: [],
                 bossPerks: [],
+                campaignCompleted: false,
                 ...parsed,
             };
         } catch {
@@ -162,10 +167,10 @@ class GameStateManager {
     hasSavedProgress() {
         if (this.mode === 'daily') {
             const saved = this.loadDailySave(this.dailyDateKey);
-            return Boolean(saved && saved.day > 1);
+            return Boolean(saved && saved.day > 1 && !saved.campaignCompleted);
         }
         const saved = this.loadNormalSave();
-        return Boolean(saved && saved.day > 1);
+        return Boolean(saved && saved.day > 1 && !saved.campaignCompleted);
     }
 
     createFreshRun() {
@@ -186,6 +191,7 @@ class GameStateManager {
             classId: cls.id,
             bossesBeaten: [],
             bossPerks: [],
+            campaignCompleted: false,
             runToken: null,
             edgeSigned: false,
             runWolvesDefeated: 0,
@@ -212,9 +218,6 @@ class GameStateManager {
         this.saveCurrentProgress();
     }
 
-    // =========================================================
-    // سیستم باس، تشدید سختی (World Tier) و اسلات‌های کارت (۴ → ۵ → ۶)
-    // =========================================================
     hasBeatenBoss(bossType) {
         return Array.isArray(this.data.bossesBeaten) && this.data.bossesBeaten.includes(bossType);
     }
@@ -224,19 +227,17 @@ class GameStateManager {
     }
 
     getWorldTier() {
-        if (this.hasBeatenBoss('wolf_king')) return 3;
         if (this.hasBeatenBoss('kraken')) return 2;
         return 1;
     }
 
     getMaxCardSlots() {
-        if (this.hasBeatenBoss('wolf_king')) return SLOT_CONFIG.AFTER_BOSS_2_SLOTS;
         if (this.hasBeatenBoss('kraken')) return SLOT_CONFIG.AFTER_BOSS_1_SLOTS;
         return SLOT_CONFIG.BASE_SLOTS;
     }
 
     isCardShopUnlocked(completedDay) {
-        return completedDay >= SLOT_CONFIG.SHOP_UNLOCK_AFTER_DAY;
+        return completedDay >= SLOT_CONFIG.SHOP_UNLOCK_AFTER_DAY && completedDay < MAX_CAMPAIGN_DAY;
     }
 
     getOwnedCardIds() {
@@ -268,9 +269,6 @@ class GameStateManager {
         return milestone;
     }
 
-    // =========================================================
-    // کلاس‌ها و پیشرفت کلی
-    // =========================================================
     getClassConfig(classId = null) {
         const id = classId || this.meta.selectedClass || 'classic';
         return SHEPHERD_CLASSES[id] || SHEPHERD_CLASSES.classic;
@@ -418,9 +416,6 @@ class GameStateManager {
         this.saveCurrentProgress();
     }
 
-    // =========================================================
-    // سیستم کارت‌ها، قیمت‌گذاری ضد-اسنوبال و جایگزینی اسلات
-    // =========================================================
     getCardLevel(cardId) {
         return this.data.cards?.[cardId] || 0;
     }
@@ -579,9 +574,6 @@ class GameStateManager {
         return true;
     }
 
-    // =========================================================
-    // محاسبه‌گرهای بالانس‌شده (سود + هزینه کارت‌ها)
-    // =========================================================
     buildStageFlock(day) {
         const cfg = getDayConfig(day, this.mode === 'daily', this.dailyDateKey, this.getWorldTier());
         const cls = this.getClassConfig(this.data.classId);
@@ -595,25 +587,29 @@ class GameStateManager {
         for (let i = 0; i < cfg.rebelCount; i++) list.push('rebel');
         for (let i = 0; i < cfg.gluttonCount; i++) list.push('glutton');
 
-        // سقف منطقی گله (حداکثر ۱۴) برای حفظ مهارت و جلوگیری از اسنوبال
-        const targetTotal = Math.min(14, cfg.baseFlockSize + Math.min(2, ramCount + goldCount));
+        const targetTotal = Math.min(13, cfg.baseFlockSize + Math.min(2, ramCount + goldCount));
         while (list.length < targetTotal) {
             list.push('normal');
         }
-        return list.slice(0, 14);
+        return list.slice(0, 13);
     }
 
     getSurvivalQuota(totalFlock, targetDay = null) {
         const d = targetDay ?? this.data.day;
         const cls = this.getClassConfig(this.data.classId);
-        const tier = this.getWorldTier();
+
+        // در باس‌فایت نهایی (مرحله ۱۰) بازیکن همیشه می‌تواند تا ۲ گوسفند از دست بدهد
+        if (d === MAX_CAMPAIGN_DAY) {
+            const minFloor = Math.min(3, totalFlock);
+            return Math.max(minFloor, totalFlock - 2);
+        }
 
         let allowedLosses = 2;
         if (d <= 2) {
-            allowedLosses = 2; // مراحل ۱ و ۲ منصفانه و بدون فشار ناگهانی
-        } else if (tier >= 3 || d >= 9) {
+            allowedLosses = 2;
+        } else if (d === 9) {
             allowedLosses = 0;
-        } else if (tier >= 2 || d >= 4) {
+        } else if (d >= 4) {
             allowedLosses = 1;
         }
 
@@ -629,21 +625,18 @@ class GameStateManager {
 
     getWolfSpeedMultiplier() {
         const cls = this.getClassConfig(this.data.classId);
-        // هزینه کارت لمس طلایی: گرگ‌ها +۱۵٪ به ازای هر سطح سریع‌تر
         return cls.wolfSpeedMul * (1 + this.getCardLevel('golden_touch') * 0.15);
     }
 
     getWhistleRadius(isFever = false) {
         const cls = this.getClassConfig(this.data.classId);
         const powerMul = 1 + this.getCardLevel('whistle_power') * 0.18;
-        // هزینه کارت نجات هوشمند: -۱۲٪ شعاع سوت به ازای هر سطح
         const magnetPenalty = Math.max(0.64, 1 - this.getCardLevel('magnet_save') * 0.12);
         return WHISTLE.BASE_RADIUS * cls.whistleRadiusMul * powerMul * magnetPenalty * (isFever ? 1.18 : 1.0);
     }
 
     getWhistleForce(isFever = false) {
         const powerMul = 1 + this.getCardLevel('whistle_power') * 0.18;
-        // هزینه کارت نفس آهنی: -۱۰٪ قدرت پرتاب هر سوت به ازای هر سطح
         const lungPenalty = Math.max(0.7, 1 - this.getCardLevel('lung_capacity') * 0.1);
         return WHISTLE.BASE_FORCE * powerMul * lungPenalty * (isFever ? 1.16 : 1.0);
     }
@@ -655,12 +648,10 @@ class GameStateManager {
     }
 
     getWhistleCooldownMs() {
-        // هزینه کارت سوت شوک‌دار: +۳۵٪ تاخیر بین سوت‌ها
         return Math.round(WHISTLE.COOLDOWN_MS * (1 + this.getCardLevel('shock_whistle') * 0.35));
     }
 
     getWhistleStaminaCost(isFever = false) {
-        // هزینه ابرسوت (+۲۰٪) + هزینه استاد تب طلا خارج از تب طلا (+۱۵٪)
         const powerTax = 1 + this.getCardLevel('whistle_power') * 0.2;
         const feverTax = isFever ? 0.5 : 1 + this.getCardLevel('fever_master') * 0.15;
         return STAMINA.WHISTLE_COST * powerTax * feverTax;
@@ -681,7 +672,6 @@ class GameStateManager {
     }
 
     getSheepFleeSpeedMul() {
-        // هزینه هاله آرامش: -۱۲٪ سرعت فرار گله به ازای هر سطح
         return Math.max(0.64, 1 - this.getCardLevel('calm_aura') * 0.12);
     }
 
@@ -703,12 +693,10 @@ class GameStateManager {
     }
 
     getFlowerEatSpeedMul() {
-        // هزینه گل‌های انفجاری: گل‌ها ۲۵٪ سریع‌تر خورده می‌شوند
         return 1 + this.getCardLevel('thorny_bloom') * 0.25;
     }
 
     getFlowerValuePenalty() {
-        // هزینه گل‌های انفجاری: ۲ سکه کمتر برای هر گل سالم
         return this.getCardLevel('thorny_bloom') * 2;
     }
 
@@ -735,7 +723,6 @@ class GameStateManager {
             }
         }
 
-        // امتیازدهی متعادل: در مراحل ۱ و ۲ کم و کنترل‌شده، در مراحل بالا و Tier 2/3 پاداش متناسب با زحمت
         const stageScore = netGold + completedDay * 50 + aliveSheepCount * 12;
         this.data.totalScore += stageScore;
 
@@ -747,15 +734,17 @@ class GameStateManager {
             finishedAt: Date.now(),
         });
 
-        this.data.day += 1;
-
-        // جایزه ویژه «تاج شبان» پس از شکست باس ۱۰: ۱ علوفه رایگان ابتدای هر مرحله بعدی
-        if (this.hasBossPerk('wolf_crown') && this.data.hayCount < HAY_CONFIG.MAX_STOCK) {
-            this.data.hayCount += 1;
-        }
-
-        if (this.data.day > this.meta.maxDayReached) {
-            this.meta.maxDayReached = this.data.day;
+        if (completedDay >= MAX_CAMPAIGN_DAY) {
+            this.data.campaignCompleted = true;
+            this.data.day = MAX_CAMPAIGN_DAY;
+            if (MAX_CAMPAIGN_DAY > this.meta.maxDayReached) {
+                this.meta.maxDayReached = MAX_CAMPAIGN_DAY;
+            }
+        } else {
+            this.data.day += 1;
+            if (this.data.day > this.meta.maxDayReached) {
+                this.meta.maxDayReached = this.data.day;
+            }
         }
 
         if (this.mode === 'daily') {

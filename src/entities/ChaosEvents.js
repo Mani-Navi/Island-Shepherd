@@ -1,4 +1,4 @@
-import { getRandomSafePoint, rand } from '../config/gameData.js';
+import { HAY_CONFIG, getRandomSafePoint, rand } from '../config/gameData.js';
 import { sound } from '../utils/SoundGen.js';
 
 export class ChaosDirector {
@@ -13,7 +13,7 @@ export class ChaosDirector {
         this.signatureTriggered = false;
     }
 
-    findDensestCluster(sheepList) {
+    findDensestCluster(sheepList, activeHay = null) {
         let best = null;
         let maxCount = 0;
 
@@ -31,14 +31,23 @@ export class ChaosDirector {
                 }
             }
             if (count > maxCount) {
+                const cx = sx / count;
+                const cy = sy / count;
+                if (
+                    activeHay &&
+                    activeHay.isAlive &&
+                    Math.hypot(cx - activeHay.x, cy - activeHay.y) < HAY_CONFIG.LIGHTNING_SAFE_RADIUS
+                ) {
+                    continue;
+                }
                 maxCount = count;
-                best = { x: sx / count, y: sy / count, count, lead: s };
+                best = { x: cx, y: cy, count, lead: s };
             }
         }
         return maxCount >= 4 ? best : null;
     }
 
-    triggerRandomEvent(day, shapeId, sheepList, allowedEvents = null, signatureEvent = null) {
+    triggerRandomEvent(day, shapeId, sheepList, allowedEvents = null, signatureEvent = null, activeHay = null) {
         const pool =
             Array.isArray(allowedEvents) && allowedEvents.length > 0
                 ? allowedEvents
@@ -46,10 +55,9 @@ export class ChaosDirector {
 
         if (pool.length === 0) return;
 
-        const cluster = this.findDensestCluster(sheepList);
+        const cluster = this.findDensestCluster(sheepList, activeHay);
         let pick;
 
-        // در اولین حادثه هر مرحله، اگر چالش جدیدی در این مرحله باز شده اول همان اجرا می‌شود
         if (!this.signatureTriggered && signatureEvent && pool.includes(signatureEvent)) {
             pick = signatureEvent;
             this.signatureTriggered = true;
@@ -61,9 +69,19 @@ export class ChaosDirector {
         this.lastEventType = pick;
 
         if (pick === 'eagle') this.spawnEagle(sheepList, cluster);
-        else if (pick === 'lightning') this.spawnLightningStorm(day, shapeId, cluster);
+        else if (pick === 'lightning') this.spawnLightningStorm(day, shapeId, cluster, activeHay);
         else if (pick === 'tornado') this.spawnTornado(shapeId, cluster);
         else if (pick === 'ufo') this.spawnUfo(shapeId, sheepList, cluster);
+    }
+
+    /**
+     * اگر بازیکن روی دایره هشدار رعد و برق بسته علوفه بگذارد، آن صاعقه‌های نزدیک خنثی می‌شوند
+     */
+    clearLightningNearHay(hayX, hayY, safeRadius = HAY_CONFIG.LIGHTNING_SAFE_RADIUS) {
+        this.lightnings = this.lightnings.filter((l) => {
+            if (l.struck) return true;
+            return Math.hypot(l.x - hayX, l.y - hayY) >= safeRadius;
+        });
     }
 
     spawnBurst(x, y, tint = 0xfde047, count = 8) {
@@ -93,7 +111,6 @@ export class ChaosDirector {
         if (alive.length === 0) return;
         const target = cluster ? cluster.lead : alive[Math.floor(rand() * alive.length)];
 
-        // اعلام صوتی واضح ورود عقاب با جیغ عقاب
         sound.playEagleScreech();
         this.scene.showFloatingText(0, -125, 'هشدار عقاب! روی سایه‌اش سوت بزن', '#fca5a5');
         this.scene.triggerDiscovery?.('chaos_eagle');
@@ -109,14 +126,33 @@ export class ChaosDirector {
         });
     }
 
-    spawnLightningStorm(day, shapeId, cluster) {
-        const count = Math.min(5, 2 + Math.floor(Math.max(0, day - 5) * 0.45));
+    spawnLightningStorm(day, shapeId, cluster, activeHay = null) {
+        const count = Math.min(4, 2 + Math.floor(Math.max(0, day - 7) * 0.5));
         sound.playAlarm();
         this.scene.showFloatingText(0, -125, 'طوفان رعد و برق! از دایره‌ها دور شو', '#fde047');
         this.scene.triggerDiscovery?.('chaos_lightning');
 
+        const safeR = HAY_CONFIG.LIGHTNING_SAFE_RADIUS;
+        const isSafeFromHay = (pt) => {
+            if (!activeHay || !activeHay.isAlive) return true;
+            return Math.hypot(pt.x - activeHay.x, pt.y - activeHay.y) >= safeR;
+        };
+
         for (let i = 0; i < count; i++) {
-            const pt = cluster && i === 0 ? { x: cluster.x, y: cluster.y } : getRandomSafePoint(shapeId, 20);
+            let pt = null;
+            if (cluster && i === 0 && isSafeFromHay(cluster)) {
+                pt = { x: cluster.x, y: cluster.y };
+            } else {
+                for (let attempt = 0; attempt < 40; attempt++) {
+                    const candidate = getRandomSafePoint(shapeId, 20, this.scene.terrain);
+                    if (isSafeFromHay(candidate)) {
+                        pt = candidate;
+                        break;
+                    }
+                }
+            }
+            if (!pt) continue;
+
             this.lightnings.push({
                 x: pt.x,
                 y: pt.y,
@@ -200,7 +236,7 @@ export class ChaosDirector {
         }
     }
 
-    update(dt, time, sheepList, wolfList, flowerList, onSheepLost, onWolfAction) {
+    update(dt, time, sheepList, wolfList, flowerList, onSheepLost, onWolfAction, activeHay = null) {
         this.gfx.clear();
 
         // ۱. عقاب‌ها
@@ -229,9 +265,19 @@ export class ChaosDirector {
         }
         this.eagles = this.eagles.filter((e) => !e.done);
 
-        // ۲. رعد و برق‌ها
+        // ۲. رعد و برق‌ها (با محافظت کامل محدوده بسته علوفه)
         for (const l of this.lightnings) {
             if (!l.struck) {
+                if (
+                    activeHay &&
+                    activeHay.isAlive &&
+                    Math.hypot(l.x - activeHay.x, l.y - activeHay.y) < HAY_CONFIG.LIGHTNING_SAFE_RADIUS
+                ) {
+                    l.struck = true;
+                    l.flashLife = 0;
+                    continue;
+                }
+
                 l.timer -= dt;
                 const ratio = 1 - Math.max(0, l.timer / l.maxTimer);
                 this.gfx.fillStyle(0xfef08a, 0.12 + ratio * 0.25);

@@ -1,3 +1,5 @@
+export const MAX_CAMPAIGN_DAY = 10;
+
 export const WORLD = {
     VIEW_SIZE: 700,
     SAFE_RADIUS: 228,
@@ -35,8 +37,9 @@ export const PANIC = {
 
 export const HAY_CONFIG = {
     PRICE: 70,
-    DURATION_SEC: 6.0,
+    DURATION_SEC: 6.2,
     ATTRACT_RADIUS: 235,
+    LIGHTNING_SAFE_RADIUS: 140,
     MAX_STOCK: 4,
 };
 
@@ -49,7 +52,6 @@ export const REROLL_BASE_PRICE = 30;
 export const SLOT_CONFIG = {
     BASE_SLOTS: 4,
     AFTER_BOSS_1_SLOTS: 5,
-    AFTER_BOSS_2_SLOTS: 6,
     SHOP_UNLOCK_AFTER_DAY: 2,
 };
 
@@ -68,19 +70,20 @@ export const BOSS_REWARDS = {
         perkTitle: 'قلب اقیانوس',
         perkDesc: '+۱۵٪ سرعت شارژ تب طلا در تمام مراحل بعدی',
         escalationTitle: 'ورود به سطح چالش ۲ (Tier 2)',
-        escalationDesc: 'اسلات ۵ کارت باز شد! از این پس مراحل عادی سریع‌تر می‌شوند و تپه‌های لغزنده، گرگ سایه و عقاب وارد میدان می‌شوند.',
+        escalationDesc:
+            'اسلات ۵ کارت باز شد! از این پس مراحل عادی سریع‌تر می‌شوند و تپه‌های لغزنده، باد قوی، گرگ سایه و آبگیر وارد بازی می‌شوند.',
         bounty: 60,
     },
     wolf_king: {
         bossType: 'wolf_king',
         tierUnlocked: 3,
-        newMaxSlots: 6,
+        newMaxSlots: 5,
         perkId: 'wolf_crown',
-        perkTitle: 'تاج شبان',
-        perkDesc: 'شروع هر مرحله با ۱ بسته علوفه رایگان + ۲ برابر اعتبار در رده‌بندی',
-        escalationTitle: 'ورود به سطح استاد جزیره (Tier 3)',
-        escalationDesc: 'اسلات ۶ کارت باز شد! نقشه‌های سخت‌تر، گردباد، بشقاب‌پرنده و حملات شبانه فعال شدند.',
-        bounty: 95,
+        perkTitle: 'تاج قهرمان جزیره',
+        perkDesc: 'نشان افتخار شکست کامل شاه گرگ‌ها و فتح هر ۱۰ مرحله',
+        escalationTitle: 'پیروزی نهایی بر شاه گرگ‌ها!',
+        escalationDesc: 'آرامش برای همیشه به جزیره بازگشت و نام تو به عنوان قهرمان ثبت شد.',
+        bounty: 120,
     },
 };
 
@@ -197,30 +200,39 @@ export function getSeasonForDay(day) {
 export const DISCOVERY_GUIDES = {
     wolf_intro: {
         id: 'wolf_intro',
-        tag: 'چالش پایه',
+        tag: 'چالش مرحله ۱',
         title: 'ورود گرگ شکارچی',
         icon: 'wolf',
         accent: '#dc2626',
         desc: 'با صدای زوزه، گرگ از لبه جزیره وارد می‌شود. با دو بار سوت یا سوایپ فراری‌اش بده.',
-        tip: 'اگر گرگ را به داخل آب پرت کنی فوراً ناک‌اوت می‌شود و ۲ برابر سکه می‌گیری!',
+        tip: 'اگر گرگ را به داخل دریای بیرون جزیره پرت کنی فوراً ناک‌اوت می‌شود و ۲ برابر سکه می‌گیری!',
     },
     terrain_mud: {
         id: 'terrain_mud',
-        tag: 'عارضه زمین',
+        tag: 'عارضه زمین (مرحله ۳)',
         title: 'چاله گل‌ولای و خارزار',
         icon: 'island',
         accent: '#92400e',
-        desc: 'این بخش از زمین سرعت حرکت گوسفندها و گرگ‌ها را ۴۵٪ کاهش می‌دهد.',
-        tip: 'سود و هزینه: گرگ را به گل‌ولای بکشان تا راحت دفعش کنی، ولی نگذار گوسفندهایت آنجا گیر بیفتند!',
+        desc: 'گل‌ولای سرعت حرکت گوسفندها را به شدت کاهش می‌دهد و خارج کردنشان از آن سخت‌تر است، اما روی گرگ‌ها اثری ندارد!',
+        tip: 'سعی کن گله را از چاله‌های گل‌ولای دور نگه داری تا طعمه راحت گرگ نشوند.',
     },
     beehive_intro: {
         id: 'beehive_intro',
-        tag: 'ابزار دوگانه',
+        tag: 'ابزار دوگانه (مرحله ۳)',
         title: 'کندوی زنبور وحشی',
         icon: 'bee',
         accent: '#d97706',
         desc: 'با سوت زدن روی کندو، زنبورها گرگ‌های اطراف را فراری می‌دهند.',
         tip: 'هزینه: گوسفندهایی که خیلی به کندو نزدیک باشند از زنبورها می‌ترسند و سریع پراکنده می‌شوند.',
+    },
+    chaos_eagle: {
+        id: 'chaos_eagle',
+        tag: 'تهدید هوایی (مرحله ۴)',
+        title: 'عقاب شکارچی',
+        icon: 'eagle',
+        accent: '#92400e',
+        desc: 'با صدای جیغ عقاب، سایه‌ای قرمز روی یک گوسفند قفل می‌شود و چند لحظه بعد شیرجه می‌زند.',
+        tip: 'یا گوسفند را از دایره دور کن، یا مستقیم روی سایه عقاب سوت بزن تا با پاداش سکه فرار کند!',
     },
     boss_kraken: {
         id: 'boss_kraken',
@@ -229,97 +241,79 @@ export const DISCOVERY_GUIDES = {
         icon: 'kraken',
         accent: '#7e22ce',
         desc: 'شاخک‌های زره‌دار از زمین بیرون می‌آیند و در فازهای بعدی مکش اقیانوس گله را سمت آب می‌کشد.',
-        tip: 'با شکست کراکن اسلات پنجم کارت و قدرت «قلب اقیانوس» باز می‌شود و بازی وارد سطح چالش ۲ می‌شود!',
+        tip: 'با شکست کراکن اسلات پنجم کارت و قدرت «قلب اقیانوس» باز می‌شود و وارد سطح چالش ۲ می‌شوی!',
     },
     terrain_slope: {
         id: 'terrain_slope',
-        tag: 'عارضه زمین (سطح ۲)',
+        tag: 'عارضه زمین (مرحله ۶)',
         title: 'تپه شیب‌دار لغزنده',
         icon: 'wind',
         accent: '#0284c7',
-        desc: 'هر موجودی که وارد شیب شود در جهت فلش‌ها سر می‌خورد.',
-        tip: 'سود و هزینه: مراقب لغزش گله سمت ساحل باش، اما می‌توانی گرگ‌ها را روی شیب مستقیم به آب سر بدهی!',
-    },
-    golden_zone_intro: {
-        id: 'golden_zone_intro',
-        tag: 'ریسک و پاداش',
-        title: 'چراگاه طلایی',
-        icon: 'sparkle',
-        accent: '#ca8a04',
-        desc: 'دایره‌ای طلایی نزدیک ساحل ظاهر می‌شود و تا وقتی گله داخل آن باشد سکه و تب طلا می‌دهد.',
-        tip: 'چون لب آب است، حواست باشد طمع سکه باعث سقوط گوسفندها به دریا نشود.',
+        desc: 'گوسفندهایی که وارد این شیب شوند به شدت در جهت فلش‌ها سر می‌خورند (گرگ‌ها روی شیب لیز نمی‌خورند!).',
+        tip: 'اجازه نده گوسفندها به سمت شیب‌های نزدیک ساحل بروند وگرنه سریع به آب می‌افتند.',
     },
     wolf_swift: {
         id: 'wolf_swift',
-        tag: 'دشمن سطح ۲',
+        tag: 'دشمن سریع (مرحله ۶)',
         title: 'گرگ سایه',
         icon: 'wolf',
         accent: '#7c3aed',
         desc: 'گرگ بنفش با سرعت بالا که با یک ضربه سوت یا سوایپ فوراً فرار می‌کند.',
         tip: 'به محض شنیدن زوزه تیز و دیدن علامت بنفش، آماده واکنش سریع باش.',
     },
-    chaos_eagle: {
-        id: 'chaos_eagle',
-        tag: 'تهدید هوایی',
-        title: 'عقاب شکارچی',
-        icon: 'eagle',
-        accent: '#92400e',
-        desc: 'با صدای جیغ عقاب، سایه‌ای قرمز روی یک گوسفند قفل می‌شود و چند لحظه بعد شیرجه می‌زند.',
-        tip: 'یا گوسفند را از دایره دور کن، یا مستقیم روی سایه عقاب سوت بزن تا با پاداش سکه فرار کند!',
+    wind_intro: {
+        id: 'wind_intro',
+        tag: 'عامل طبیعی (مرحله ۷)',
+        title: 'باد ساحلی قوی',
+        icon: 'wind',
+        accent: '#0d9488',
+        desc: 'باد شدید مرتباً جهت عوض می‌کند و کل گله را به یک سمت جزیره هل می‌دهد (روی گرگ‌ها اثری ندارد).',
+        tip: 'جهت خطوط باد را ببین و گوسفندها را همیشه در سمت مخالف باد نگه دار.',
+    },
+    golden_zone_intro: {
+        id: 'golden_zone_intro',
+        tag: 'ریسک و پاداش (مرحله ۷)',
+        title: 'چراگاه طلایی',
+        icon: 'sparkle',
+        accent: '#ca8a04',
+        desc: 'دایره‌ای طلایی نزدیک ساحل ظاهر می‌شود و تا وقتی گله داخل آن باشد سکه و تب طلا می‌دهد.',
+        tip: 'با وجود باد ساحلی، طمع بیش از حد برای سکه می‌تواند گله را به دریا بیندازد!',
     },
     terrain_pond: {
         id: 'terrain_pond',
-        tag: 'عارضه زمین (سطح ۲)',
+        tag: 'عارضه زمین (مرحله ۸)',
         title: 'آبگیر داخلی جزیره',
         icon: 'water',
         accent: '#0ea5e9',
-        desc: 'یک چاله آب عمیق در دل جزیره قرار گرفته است.',
-        tip: 'سود و هزینه: گوسفند داخل آبگیر بیفتد از دست می‌رود، ولی پرتاب گرگ به داخلش فوراً ناک‌اوت ۲ برابر سکه می‌دهد!',
-    },
-    wolf_alpha: {
-        id: 'wolf_alpha',
-        tag: 'دشمن سنگین',
-        title: 'گرگ آلفا',
-        icon: 'wolfAlpha',
-        accent: '#b91c1c',
-        desc: 'گرگ عظیم با ۴ واحد جان که در برابر عقب‌راندن مقاوم‌تر است.',
-        tip: 'سریع‌ترین راه حذف آلفا، هل دادن آن به آبگیر یا دریا از طریق تپه شیب‌دار است.',
+        desc: 'چاله آب عمیقی در دل جزیره ایجاد شده؛ اگر گوسفند داخلش بیفتد از دست می‌رود، اما گرگ‌ها از کنار آن بی‌خطر عبور می‌کنند!',
+        tip: 'هنگام سوت زدن حواست باشد گوسفندها را ناخواسته به سمت آبگیر وسط زمین هل ندهی.',
     },
     chaos_lightning: {
         id: 'chaos_lightning',
-        tag: 'حادثه آب‌وهوایی',
+        tag: 'حادثه آب‌وهوایی (مرحله ۸)',
         title: 'طوفان رعد و برق',
         icon: 'lightning',
         accent: '#0284c7',
-        desc: 'دایره‌های هشدار روی زمین ظاهر می‌شوند و پس از چند لحظه صاعقه فرود می‌آید.',
-        tip: 'سود و هزینه: گله را دور کن، ولی اگر گرگی داخل دایره صاعقه باشد فوراً دفع می‌شود و جایزه می‌گیری!',
+        desc: 'دایره‌های هشدار روی زمین ظاهر می‌شوند و چند لحظه بعد صاعقه فرود می‌آید.',
+        tip: 'نکته کلیدی: اطراف بسته علوفه در برابر رعد و برق امن است! همچنین اگر گرگی زیر صاعقه باشد دفع می‌شود.',
+    },
+    wolf_alpha: {
+        id: 'wolf_alpha',
+        tag: 'دشمن سنگین (مرحله ۹)',
+        title: 'گرگ آلفا',
+        icon: 'wolfAlpha',
+        accent: '#b91c1c',
+        desc: 'گرگ عظیم با ۴ واحد جان که در برابر عقب‌راندن مقاوم‌تر است و همراه جزر و مد حمله می‌کند.',
+        tip: 'با سوت شوک‌دار، سگ گله، قوچ یا هل دادن به دریای بیرون جزیره سریع‌ترین نتیجه را می‌گیری.',
     },
     boss_wolf_king: {
         id: 'boss_wolf_king',
-        tag: 'باس‌فایت مرحله ۱۰',
+        tag: 'باس‌فایت نهایی (مرحله ۱۰)',
         title: 'شاه گرگ‌ها',
         icon: 'crown',
         accent: '#b91c1c',
-        desc: 'فرمانده گرگ‌ها با تاج طلایی! یورش‌های پیاپی و موج زوزه می‌زند و گرگ‌های دیگر را احضار می‌کند.',
-        tip: 'با شکست شاه گرگ‌ها، اسلات ۶ کارت و «تاج شبان» باز می‌شود و وارد سطح استاد جزیره (Tier 3) می‌شوی!',
-    },
-    chaos_tornado: {
-        id: 'chaos_tornado',
-        tag: 'حادثه سطح ۳',
-        title: 'گردباد سرگردان',
-        icon: 'wind',
-        accent: '#0d9488',
-        desc: 'گردباد روی جزیره می‌چرخد و گوسفندهای نزدیک خود را به اطراف پرتاب می‌کند.',
-        tip: 'گوسفندهایی که در مسیر گردباد هستند را قبل از رسیدن به آبگیر یا دریا برگردان.',
-    },
-    chaos_ufo: {
-        id: 'chaos_ufo',
-        tag: 'حادثه سطح ۳',
-        title: 'پرتو بشقاب‌پرنده',
-        icon: 'ufo',
-        accent: '#16a34a',
-        desc: 'پرتوی سبز به دنبال گله حرکت می‌کند و اگر گوسفندی زیر آن بماند، ربوده می‌شود.',
-        tip: 'دو بار روی دایره سبز سوت بزن تا بشقاب‌پرنده نابود شود و جایزه سکه بگیری!',
+        desc: 'فرمانده نهایی گرگ‌ها! یورش‌های پیاپی و موج زوزه می‌زند. در این نبرد می‌توانی تا ۲ گوسفند از دست بدهی.',
+        tip: 'هر وقت گوسفندی را گرفت، فوراً روی خودش سوت یا سوایپ بزن تا همان لحظه گوسفند را رها و گیج شود!',
     },
 };
 
@@ -435,7 +429,7 @@ export const MINI_MISSIONS = [
     {
         id: 'water_ko_1',
         icon: 'water',
-        title: '۱ گرگ را در آب یا آبگیر ناک‌اوت کن',
+        title: '۱ گرگ را در دریا ناک‌اوت کن',
         target: 1,
         rewardGold: 22,
         freeReroll: 1,
@@ -493,7 +487,7 @@ export const MINI_MISSIONS = [
         target: 10,
         rewardGold: 25,
         freeReroll: 1,
-        minDay: 6,
+        minDay: 7,
     },
     {
         id: 'dog_guard',
@@ -525,7 +519,7 @@ export const MINI_MISSIONS = [
     {
         id: 'water_ko_2',
         icon: 'water',
-        title: '۲ گرگ را ناک‌اوت آبی کن',
+        title: '۲ گرگ را در دریا ناک‌اوت کن',
         target: 2,
         rewardGold: 32,
         freeReroll: 1,
@@ -547,9 +541,9 @@ export const BOSS_CONFIG = {
         id: 'wolf_king',
         icon: 'crown',
         name: 'شاه گرگ‌ها',
-        baseHp: 26,
-        summonInterval: 4.3,
-        dashInterval: 3.0,
+        baseHp: 24,
+        summonInterval: 4.5,
+        dashInterval: 3.1,
         bounty: BOSS_REWARDS.wolf_king.bounty,
     },
 };
@@ -570,7 +564,7 @@ export const ISLAND_SHAPES = {
     star: {
         id: 'star',
         name: 'جزیره ستاره‌ای',
-        desc: 'چهار شبه‌جزیره تیز؛ نگذار گوسفندها به نوک شاخه‌ها بروند.',
+        desc: 'چهار شبه‌جزیره تیز؛ نگذار باد گوسفندها را به نوک شاخه‌ها ببرد.',
         badgeColor: '#d97706',
     },
     ring: {
@@ -588,7 +582,7 @@ export const ISLAND_SHAPES = {
     twin: {
         id: 'twin',
         name: 'جزایر دوقلو و پل',
-        desc: 'دو جزیره متصل با پل باریک؛ چالش حرفه‌ای برای سطح استاد!',
+        desc: 'دو جزیره متصل با پل باریک؛ چالش حرفه‌ای برای چوپانان ماهر!',
         badgeColor: '#0d9488',
     },
 };
@@ -624,7 +618,7 @@ export const SHEEP_TYPES = {
     ram: {
         key: 'sheep_ram',
         name: 'قوچ جنگجو',
-        baseIncome: 0, // هزینه تعادلی: درآمد سکه ندارد و سنگین‌تر حرکت می‌کند
+        baseIncome: 0,
         knockbackMul: 0.68,
         woolInterval: 34,
         woolValue: 1,
@@ -711,13 +705,10 @@ export const DOG_CONFIG = {
     VISION_RADIUS: 178,
     WOLF_BARK_COOLDOWN: 3.7,
     REST_DURATION: 1.5,
-    UPKEEP_PER_DOG: 12, // هزینه نگهداری هر سگ در پایان مرحله
-    STARTLE_RADIUS: 78, // شعاع ترساندن گوسفندهای خیلی نزدیک هنگام پارس
+    UPKEEP_PER_DOG: 12,
+    STARTLE_RADIUS: 78,
 };
 
-/**
- * ۱۲ کارت دوجنبه (همه کارت‌ها هم سود واقعی دارند هم هزینه واقعی — بدون گزینه بی‌نقص)
- */
 export const CARDS = [
     {
         id: 'lung_capacity',
@@ -853,27 +844,20 @@ export const COLORS = {
     WHISTLE_RING: 0xffffff,
 };
 
-/**
- * انتخاب نقشه منطقی:
- * مراحل ۱، ۲ و ۳ روی جزیره باز (classic) با عوارض داخلی متنوع تا شوک ناگهانی به بازیکن وارد نشود.
- * جزیره دوقلو (twin) و نقشه‌های سخت فقط پس از باس‌های ۵ و ۱۰ وارد می‌شوند.
- */
 export function getIslandForDay(day, isDaily = false, dateKey = null) {
     if (!isDaily) {
         if (day <= 3) return ISLAND_SHAPES.classic;
         if (day === 4) return ISLAND_SHAPES.crescent;
-        if (day === 5) return ISLAND_SHAPES.classic; // میدان نبرد کراکن
+        if (day === 5) return ISLAND_SHAPES.classic; // باس کراکن
         if (day === 6) return ISLAND_SHAPES.crescent;
         if (day === 7) return ISLAND_SHAPES.star;
-        if (day === 8) return ISLAND_SHAPES.classic; // آبگیر داخلی روی زمین باز
+        if (day === 8) return ISLAND_SHAPES.classic; // آبگیر داخلی + رعد و برق
         if (day === 9) return ISLAND_SHAPES.ridge;
-        if (day === 10) return ISLAND_SHAPES.classic; // میدان نبرد شاه گرگ‌ها
-        const masterOrder = ['twin', 'star', 'ring', 'ridge', 'crescent', 'classic'];
-        return ISLAND_SHAPES[masterOrder[(day - 11) % masterOrder.length]];
+        return ISLAND_SHAPES.classic; // مرحله ۱۰: باس نهایی شاه گرگ‌ها
     }
 
-    if (day <= 2) return ISLAND_SHAPES.classic;
-    const baseOrder = ['classic', 'crescent', 'star', 'ring', 'ridge', 'twin'];
+    if (day <= 2 || day === 5 || day === 10) return ISLAND_SHAPES.classic;
+    const baseOrder = ['classic', 'crescent', 'star', 'ridge', 'ring'];
     const rng = createMulberry32(hashStringToSeed(`daily_islands_${dateKey || getTodayDateKey()}`));
     const shuffled = [...baseOrder];
     for (let i = shuffled.length - 1; i > 0; i--) {
@@ -884,7 +868,7 @@ export function getIslandForDay(day, isDaily = false, dateKey = null) {
 }
 
 export function pickMissionForDay(day, lastMissionId = null) {
-    if (day <= 2) return null; // مراحل ۱ و ۲ بدون مأموریت فرعی تا بازیکن روی اصول اصلی تمرکز کند
+    if (day <= 2) return null;
     let pool = MINI_MISSIONS.filter((m) => day >= (m.minDay || 3));
     if (pool.length > 1 && lastMissionId) {
         const filtered = pool.filter((m) => m.id !== lastMissionId);
@@ -895,120 +879,104 @@ export function pickMissionForDay(day, lastMissionId = null) {
 }
 
 /**
- * پیکربندی کامل مرحله با رعایت:
- * ۱) ریتم حداقل ۲ مرحله برای هر عارضه/مکانیک جدید
- * ۲) مراحل ۱ و ۲ متعادل و بدون شوک سختی
- * ۳) تشدید محسوس سختی پس از شکست باس ۵ (Tier 2) و باس ۱۰ (Tier 3)
+ * کمپین ۱۰ مرحله‌ای کاملاً متعادل:
+ * هر مرحله از ۳ تا ۱۰ هویت و عنصر جدید مشخص خودش را دارد (بدون خالی بودن ۴-۷ و بدون انباشت ناگهانی در ۸)
  */
-export function getDayConfig(day, isDaily = false, dateKey = null, worldTier = 1) {
+export function getDayConfig(rawDay, isDaily = false, dateKey = null, worldTier = 1) {
+    const day = Math.max(1, Math.min(MAX_CAMPAIGN_DAY, rawDay));
     const island = getIslandForDay(day, isDaily, dateKey);
     const season = getSeasonForDay(day);
-    const bossType = day === 10 || (day > 10 && day % 10 === 0)
-        ? 'wolf_king'
-        : day === 5 || (day > 5 && day % 5 === 0)
-            ? 'kraken'
-            : null;
+    const bossType = day === 10 ? 'wolf_king' : day === 5 ? 'kraken' : null;
 
-    // تشدید سختی بعد از باس‌ها (حتی روی مراحل عادی!)
-    const effectiveTier = Math.max(worldTier, day >= 11 ? 3 : day >= 6 ? 2 : 1);
-    const postBossSpeedBoost = effectiveTier === 3 ? 0.24 : effectiveTier === 2 ? 0.14 : 0;
-    const postBossIntervalBoost = effectiveTier === 3 ? 1.35 : effectiveTier === 2 ? 0.85 : 0;
+    const effectiveTier = Math.max(worldTier, day >= 6 ? 2 : 1);
+    const postBossSpeedBoost = effectiveTier >= 2 ? 0.14 : 0;
+    const postBossIntervalBoost = effectiveTier >= 2 ? 0.8 : 0;
 
-    // زمان بهینه مراحل (نه خسته‌کننده نه خیلی کوتاه)
     const durationSec = bossType
-        ? (bossType === 'wolf_king' ? 65 : 60)
+        ? (bossType === 'wolf_king' ? 68 : 60)
         : day === 1
             ? 35
             : day === 2
                 ? 38
                 : Math.min(54, 40 + (day - 2) * 1.8);
 
-    const flowerCount = day <= 2 ? 4 : Math.min(8, 4 + Math.floor((day - 1) * 0.45));
+    const flowerCount = day <= 2 ? 4 : Math.min(7, 4 + Math.floor((day - 1) * 0.4));
 
-    // رشد کنترل‌شده گله برای جلوگیری از شلوغی و اسنوبال
     const baseFlockSize =
         day === 1 ? 5
             : day === 2 ? 6
-                : Math.min(12, 5 + Math.floor((day - 1) * 0.85));
+                : Math.min(11, 5 + Math.floor((day - 1) * 0.78));
 
-    const rebelCount = day <= 2 ? 0 : Math.min(4, Math.floor((day - 1) * 0.45));
-    const gluttonCount = day === 1 ? 0 : day === 2 ? 1 : Math.min(3, Math.floor(day * 0.35));
+    const rebelCount = day <= 2 ? 0 : Math.min(3, Math.floor((day - 1) * 0.4));
+    const gluttonCount = day === 1 ? 0 : day === 2 ? 1 : Math.min(3, Math.floor(day * 0.32));
 
-    // تنظیم سرعت و فاصله ورود گرگ‌ها
     const wolfInterval = bossType
-        ? Math.max(4.6, 8.6 - day * 0.22)
+        ? (bossType === 'wolf_king' ? 5.6 : 6.4)
         : day === 1
             ? 13.5
             : day === 2
                 ? 11.8
-                : Math.max(2.6, 11.2 - (day - 2) * 0.72 - postBossIntervalBoost);
+                : Math.max(3.0, 11.0 - (day - 2) * 0.75 - postBossIntervalBoost);
 
     const firstWolfDelay = bossType
-        ? 5.0
+        ? 4.8
         : day === 1
             ? 9.0
             : day === 2
                 ? 8.0
-                : Math.max(2.8, 7.6 - (day - 2) * 0.45);
+                : Math.max(3.0, 7.4 - (day - 2) * 0.45);
 
     const wolfSpeedScale =
         day === 1
             ? 0.74
             : day === 2
                 ? 0.82
-                : Math.min(1.95, 0.82 + (day - 2) * 0.068 + postBossSpeedBoost);
+                : Math.min(1.65, 0.82 + (day - 2) * 0.068 + postBossSpeedBoost);
 
     const packChance = day >= 4 && !bossType
-        ? Math.min(0.75, 0.14 + (day - 4) * 0.09 + (effectiveTier - 1) * 0.08)
+        ? Math.min(0.7, 0.18 + (day - 4) * 0.1 + (effectiveTier - 1) * 0.08)
         : 0;
-    const triplePackChance = day >= 9 && !bossType
-        ? Math.min(0.42, 0.12 + (day - 9) * 0.06)
-        : 0;
+    const triplePackChance = day >= 9 && !bossType ? 0.25 : 0;
 
-    // ریتم ۲مرحله‌ای دشمنان جدید
+    // توزیع منظم دشمنان در ۱۰ مرحله
     const allowedWolves = ['normal'];
-    if (day >= 6) allowedWolves.push('swift'); // مراحل ۶ و ۷: گرگ سایه
-    if (day >= 8) allowedWolves.push('alpha'); // مراحل ۸ و ۹: گرگ آلفا
+    if (day >= 6) allowedWolves.push('swift'); // معرفی در مرحله ۶
+    if (day >= 9) allowedWolves.push('alpha'); // معرفی در مرحله ۹
 
-    // ریتم ۲مرحله‌ای عوارض زمین (موانع به جای کوچک کردن جزیره)
-    const obstacleCount = day <= 2 ? 2 : bossType ? 2 : Math.min(4, 2 + Math.floor(day / 4));
-    const mudCount = day >= 3 && island.id !== 'ring' ? (day >= 7 ? 2 : 1) : 0; // معرفی در ۳ و ۴
-    const slopeCount = day >= 6 && island.id !== 'twin' ? (day >= 10 ? 2 : 1) : 0; // معرفی در ۶ و ۷
-    const hasInternalPond =
-        day >= 8 && (island.id === 'classic' || island.id === 'crescent' || island.id === 'star'); // معرفی در ۸ و ۹
+    // توزیع منظم عوارض طبیعی (فقط روی گوسفندها تاثیر دارند!)
+    const obstacleCount = day <= 2 ? 2 : bossType ? 2 : 3;
+    const mudCount = day >= 3 && day !== 5 && day !== 10 ? 2 : day === 5 ? 1 : 0;   // معرفی در مرحله ۳
+    const slopeCount = day >= 6 && day !== 10 ? 2 : day === 10 ? 1 : 0;           // معرفی در مرحله ۶
+    const hasInternalPond = day === 8 || day === 10;                               // معرفی در مرحله ۸
 
-    // ابزارها و مکانیک‌های محیطی با ریتم ۲مرحله‌ای
-    const hasBeehives = day >= 3; // معرفی در ۳ و ۴
-    const hiveCount = day >= 8 ? 2 : day >= 3 ? 1 : 0;
-    const hasGoldenZone = day >= 6; // معرفی در ۶ و ۷ (در کنار تپه شیب‌دار)
-    const edgeDecreeAllowed = day >= 3; // هرگز در مراحل ۱ و ۲ فعال نشود!
+    // ابزارها و مکانیک‌های محیطی
+    const hasBeehives = day >= 3;          // معرفی در مرحله ۳
+    const hiveCount = day >= 7 ? 2 : day >= 3 ? 1 : 0;
+    const hasGoldenZone = day >= 7;        // معرفی در مرحله ۷
+    const edgeDecreeAllowed = day >= 3;
 
-    // حوادث طبیعی با ریتم ۲مرحله‌ای
+    // حوادث طبیعی متوازن در مراحل ۴ تا ۹
     const allowedChaos = [];
     if (!bossType) {
-        if (day >= 6) allowedChaos.push('eagle');     // مراحل ۶ و ۷
-        if (day >= 8) allowedChaos.push('lightning'); // مراحل ۸ و ۹
-        if (day >= 11) allowedChaos.push('tornado');  // مراحل ۱۱ و ۱۲ (Tier 3)
-        if (day >= 13) allowedChaos.push('ufo');      // مراحل ۱۳+ (Tier 3)
+        if (day >= 4) allowedChaos.push('eagle');     // معرفی در مرحله ۴
+        if (day >= 8) allowedChaos.push('lightning'); // معرفی در مرحله ۸
     }
 
     const signatureChaos =
-        day === 6 ? 'eagle'
+        day === 4 ? 'eagle'
             : day === 8 ? 'lightning'
-                : day === 11 ? 'tornado'
-                    : day === 13 ? 'ufo'
-                        : null;
+                : null;
 
     const hasChaos = allowedChaos.length > 0;
-    const chaosInterval = Math.max(5.4, 13.5 - Math.max(0, day - 6) * 0.85);
-    const firstChaosDelay = Math.max(4.5, 9.0 - Math.max(0, day - 6) * 0.45);
-    const doubleChaosChance = day >= 11 && !bossType ? Math.min(0.45, 0.16 + (day - 11) * 0.06) : 0;
+    const chaosInterval = Math.max(6.2, 12.2 - Math.max(0, day - 4) * 0.9);
+    const firstChaosDelay = day === 4 || day === 8 ? 5.2 : Math.max(4.5, 8.2 - Math.max(0, day - 4) * 0.5);
+    const doubleChaosChance = day === 9 ? 0.28 : 0;
 
-    // کوچک شدن جزیره (جزر و مد) فقط در مراحل بالا (۸ به بعد)
-    const maxTide = day >= 8 ? Math.min(36, 12 + (day - 8) * 3.5) : 0;
-    const hasWind = day >= 11 && !bossType;
-    const windStrength = hasWind ? Math.min(52, 30 + (day - 11) * 3.5) : 0;
-    const isNightRaid = (day >= 11 && day % 2 === 1) || bossType === 'wolf_king';
+    // باد ساحلی قوی (معرفی در مرحله ۷ و ادامه در ۹) + جزر و مد (معرفی در مرحله ۹)
+    const hasWind = day === 7 || day === 9;
+    const windStrength = day === 9 ? 96 : day === 7 ? 84 : 0;
+    const maxTide = day === 9 ? 28 : 0;
+    const isNightRaid = day === 9 || bossType === 'wolf_king';
 
     return {
         day,
@@ -1082,7 +1050,6 @@ export function getPolarRadius(shapeId, angle, baseRadius) {
 }
 
 export function getZoneAt(x, y, shapeId = 'classic', tideOffset = 0, terrain = null) {
-    // بررسی آبگیر داخلی پیش از شکل بیرونی
     if (terrain) {
         const pondZone = terrain.getPondZoneAt(x, y);
         if (pondZone === 'water') return 'water';
@@ -1162,10 +1129,9 @@ export function getZoneAt(x, y, shapeId = 'classic', tideOffset = 0, terrain = n
 }
 
 export function getSafeDirection(x, y, shapeId = 'classic', terrain = null) {
-    // اگر نزدیک آبگیر داخلی باشد، جهت امن دور شدن از آبگیر است
     if (terrain && terrain.pond) {
         const pd = Math.hypot(x - terrain.pond.x, y - terrain.pond.y);
-        if (pd < terrain.pond.radius + 45) {
+        if (pd < terrain.pond.rimRadius + 36) {
             const a = Math.atan2(y - terrain.pond.y, x - terrain.pond.x);
             return { x: Math.cos(a), y: Math.sin(a) };
         }

@@ -4,6 +4,7 @@ import {
     REPELLENT_CONFIG,
     EVOLUTIONS,
     BOSS_CONFIG,
+    MAX_CAMPAIGN_DAY,
     getIslandForDay,
     getDayConfig,
 } from '../config/gameData.js';
@@ -36,6 +37,7 @@ const RARITY_LABELS = {
 
 export function showEndOfDayModal({
                                       isVictory,
+                                      isCampaignVictory = false,
                                       completedDay,
                                       quota,
                                       stats,
@@ -49,7 +51,7 @@ export function showEndOfDayModal({
                                   }) {
     removeModal();
 
-    const shopUnlocked = isVictory && gameState.isCardShopUnlocked(completedDay);
+    const shopUnlocked = isVictory && !isCampaignVictory && gameState.isCardShopUnlocked(completedDay);
 
     let scoreSubmitted = false;
     let isSubmitting = false;
@@ -165,7 +167,7 @@ export function showEndOfDayModal({
               ${bossMilestone.escalationDesc}
             </div>
             <div class="pop-sublabel" style="color:#fde047; font-weight:900; margin-top:4px;">
-              قابلیت دائمی باز شد — ${bossMilestone.perkTitle}: ${bossMilestone.perkDesc}
+              ${bossMilestone.perkTitle}: ${bossMilestone.perkDesc}
             </div>
           </div>
         </div>
@@ -211,6 +213,121 @@ export function showEndOfDayModal({
         const isDaily = gameState.mode === 'daily';
         const isMobile = window.innerWidth <= 780;
 
+        // =========================================================
+        // صفحه ویژه پیروزی نهایی و پایان رسمی بازی (پس از مرحله ۱۰)
+        // =========================================================
+        if (isVictory && isCampaignVictory) {
+            const d = gameState.data;
+            const activeEvos = gameState.getActiveEvolutions();
+            const ownedCards = CARDS.filter((c) => gameState.getCardLevel(c.id) > 0);
+
+            shell.className = 'pop-shell';
+            shell.innerHTML = `
+        <div class="pop-header">
+          <div style="display:flex; justify-content:center; margin-bottom:4px;">
+            <span class="pop-pill is-sm is-yellow" style="pointer-events:none;">
+              ${icon('crown', 16)}
+              <span>پایان بازی • فتح هر ${MAX_CAMPAIGN_DAY} مرحله</span>
+            </span>
+          </div>
+          <h2 class="pop-title">پیروزی نهایی!</h2>
+          <p class="pop-subtitle">شاه گرگ‌ها شکست خورد و آرامش برای همیشه به جزیره بازگشت</p>
+        </div>
+
+        <div class="pop-body">
+          ${renderBossMilestoneBanner()}
+
+          <div class="pop-grid-2">
+            <div class="pop-row" style="justify-content:center; flex-direction:column; gap:4px; padding:12px;">
+              <div class="pop-sublabel" style="margin:0;">امتیاز نهایی</div>
+              <div class="pop-label" style="font-size:22px; color:#ffe047; display:inline-flex; align-items:center; gap:5px;">
+                ${icon('star', 19)}<span>${d.totalScore}</span>
+              </div>
+            </div>
+
+            <div class="pop-row" style="justify-content:center; flex-direction:column; gap:4px; padding:12px;">
+              <div class="pop-sublabel" style="margin:0;">گرگ‌های دفع‌شده / باس‌ها</div>
+              <div class="pop-label" style="font-size:19px; color:#4ade80;">
+                ${d.runWolvesDefeated || 0} گرگ • ${d.runBossesDefeated || 0} باس
+              </div>
+            </div>
+          </div>
+
+          ${
+                ownedCards.length > 0
+                    ? `<div class="pop-row is-column">
+               <span class="pop-label" style="font-size:13.5px;">بیلد قهرمانی تو (${ownedCards.length} کارت)</span>
+               <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                 ${activeEvos
+                        .map(
+                            (e) =>
+                                `<span class="pop-pill is-sm is-yellow" style="pointer-events:none;">${icon(e.icon, 13)}<span>تکامل: ${e.title}</span></span>`
+                        )
+                        .join('')}
+                 ${ownedCards
+                        .map(
+                            (c) =>
+                                `<span class="pop-pill is-sm" style="pointer-events:none;">${icon(c.icon, 13)}<span>${c.title} (${gameState.getCardLevel(c.id)})</span></span>`
+                        )
+                        .join('')}
+               </div>
+             </div>`
+                    : ''
+            }
+
+          ${renderReceiptCard()}
+
+          ${
+                newlyUnlockedClasses.length > 0
+                    ? `<div class="pop-row" style="background:#15803d;">
+               <div class="pop-row-left">
+                 <span class="pop-sticker is-yellow">${icon('sparkle', 19)}</span>
+                 <div class="pop-label">کلاس جدید آزاد شد: ${newlyUnlockedClasses.map((c) => c.name).join('، ')}</div>
+               </div>
+             </div>`
+                    : ''
+            }
+
+          <button type="button" id="btn-victory-lb" class="pop-pill is-green is-full" ${isSubmitting ? 'disabled' : ''}>
+            ${icon('trophy', 18)}
+            <span>${isSubmitting ? 'در حال تایید روی لبه...' : scoreSubmitted ? 'مشاهده جدول رده‌بندی' : 'ثبت رکورد قهرمانی و دریافت لقب هوشمند'}</span>
+          </button>
+        </div>
+
+        <div class="pop-footer">
+          <button type="button" id="btn-victory-restart" class="pop-pill is-yellow is-full" style="flex:1.4;">
+            ${icon('restart', 18)}
+            <span>شروع ماجراجویی جدید</span>
+          </button>
+
+          <button type="button" id="btn-victory-menu" class="pop-pill is-full" style="flex:1;">
+            ${icon('home', 17)}
+            <span>منوی اصلی</span>
+          </button>
+        </div>
+      `;
+
+            shell.querySelector('#btn-victory-lb').addEventListener('click', async () => {
+                sound.playClick();
+                const receipt = await doSubmitScore();
+                showLeaderboardModal(isDaily ? 'daily' : 'normal', receipt);
+            });
+            shell.querySelector('#btn-victory-restart').addEventListener('click', () => {
+                sound.playClick();
+                removeModal();
+                onRestartGame();
+            });
+            shell.querySelector('#btn-victory-menu').addEventListener('click', () => {
+                sound.playClick();
+                removeModal();
+                onReturnToMenu();
+            });
+            return;
+        }
+
+        // =========================================================
+        // صفحه شکست در مرحله
+        // =========================================================
         if (!isVictory) {
             const canRetry = gameState.hasDaySnapshot();
             const isBossTimeout = failReason === 'boss_timeout';
@@ -329,7 +446,7 @@ export function showEndOfDayModal({
         if (stats.dogUpkeep > 0) incomeParts.push(`نگهداری سگ: -${stats.dogUpkeep}`);
 
         // =========================================================
-        // پایان مرحله ۱: فروشگاه کارت‌ها هنوز قفل است (بازگشایی پس از مرحله ۲)
+        // پایان مرحله ۱: فروشگاه کارت‌ها هنوز قفل است
         // =========================================================
         if (!shopUnlocked) {
             shell.className = 'pop-shell';
@@ -410,7 +527,7 @@ export function showEndOfDayModal({
         }
 
         // =========================================================
-        // فروشگاه کامل (از پایان مرحله ۲ به بعد — ۴ اسلات ← ۵ بعد باس ۵ ← ۶ بعد باس ۱۰)
+        // فروشگاه کامل (از پایان مرحله ۲ تا ۹)
         // =========================================================
         const usedSlots = gameState.getOwnedCardIds().length;
         const maxSlots = gameState.getMaxCardSlots();
@@ -583,7 +700,13 @@ export function showEndOfDayModal({
                 ${nextBoss ? `باس‌فایت ${d.day}: ${nextBoss.name}` : `مرحله ${d.day}: ${nextIsland.name}`}
               </div>
               <div class="pop-sublabel">
-                ${nextBoss ? `شکست باس = باز شدن اسلات کارت + تشدید چالش` : nextIsland.desc}
+                ${
+            d.day === MAX_CAMPAIGN_DAY
+                ? 'نبرد نهایی بازی! سهمیه مجاز ۲ گوسفند'
+                : nextBoss
+                    ? 'شکست باس = باز شدن اسلات ۵ کارت + تشدید چالش'
+                    : nextIsland.desc
+        }
               </div>
             </div>
           </div>
@@ -747,7 +870,6 @@ export function showEndOfDayModal({
       `;
         }
 
-        // رویدادهای انتخاب/جایگزینی کارت
         shell.querySelector('#btn-cancel-replace')?.addEventListener('click', () => {
             sound.playCancel();
             pendingReplaceCardId = null;

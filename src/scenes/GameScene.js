@@ -5,6 +5,7 @@ import {
     STAMINA,
     SHEEP_TYPES,
     HAY_CONFIG,
+    MAX_CAMPAIGN_DAY,
     DISCOVERY_GUIDES,
     getDayConfig,
     pickMissionForDay,
@@ -76,7 +77,6 @@ export class GameScene extends Phaser.Scene {
 
         this.discoveryQueue = [];
         this.isDiscoveryOpen = false;
-        this.discoveriesShownThisStage = 0;
         this.beehiveHintTimer = this.dayCfg.hasBeehives ? 4.8 : 0;
 
         this.ambientBaaTimer = 4.5 + Math.random() * 4.0;
@@ -307,10 +307,6 @@ export class GameScene extends Phaser.Scene {
 
     triggerDiscovery(guideId) {
         if (!guideId || !DISCOVERY_GUIDES[guideId] || gameState.hasDiscovered(guideId)) return;
-        const isBoss = guideId.startsWith('boss_');
-        if (!isBoss && this.discoveriesShownThisStage >= 1) return;
-
-        this.discoveriesShownThisStage += 1;
         gameState.markDiscovered(guideId);
         this.discoveryQueue.push(guideId);
         if (!this.isDiscoveryOpen) {
@@ -480,19 +476,21 @@ export class GameScene extends Phaser.Scene {
         this.showFloatingText(
             0,
             -115,
-            `${prefix}مرحله ${this.dayCfg.day}: ${this.dayCfg.island.name} (${this.season.name}${tierLabel})`,
+            `${prefix}مرحله ${this.dayCfg.day}/${MAX_CAMPAIGN_DAY}: ${this.dayCfg.island.name} (${this.season.name}${tierLabel})`,
             '#ffffff'
         );
 
-        // معرفی عوارض جدید زمین به محض ورود اولین بار
-        this.time.delayedCall(1500, () => {
+        // معرفی دقیق عوارض و عوامل جدید در همان مرحله خودش
+        this.time.delayedCall(1200, () => {
             if (!this.isDayActive || this.dayCfg.bossType) return;
-            if (this.terrain?.pond && !gameState.hasDiscovered('terrain_pond')) {
-                this.triggerDiscovery('terrain_pond');
-            } else if (this.terrain?.slopes?.length > 0 && !gameState.hasDiscovered('terrain_slope')) {
-                this.triggerDiscovery('terrain_slope');
-            } else if (this.terrain?.muds?.length > 0 && !gameState.hasDiscovered('terrain_mud')) {
+            if (this.dayCfg.day === 3 && this.terrain?.muds?.length > 0) {
                 this.triggerDiscovery('terrain_mud');
+            } else if (this.dayCfg.day === 6 && this.terrain?.slopes?.length > 0) {
+                this.triggerDiscovery('terrain_slope');
+            } else if (this.dayCfg.day === 7 && this.dayCfg.hasWind) {
+                this.triggerDiscovery('wind_intro');
+            } else if (this.dayCfg.day === 8 && this.terrain?.pond) {
+                this.triggerDiscovery('terrain_pond');
             }
         });
 
@@ -510,7 +508,7 @@ export class GameScene extends Phaser.Scene {
                 }
             });
         } else if (this.dayCfg.hasWind) {
-            this.showFloatingText(0, -80, 'باد ساحلی فعال است!', '#99f6e4');
+            this.showFloatingText(0, -80, 'باد ساحلی قوی فعال است!', '#99f6e4');
         }
 
         if (this.dayCfg.bossType) {
@@ -529,7 +527,6 @@ export class GameScene extends Phaser.Scene {
             this.triggerDiscovery(`boss_${this.dayCfg.bossType}`);
         }
 
-        // فرمان لبه و کُری‌خوانی باس فقط از مرحله ۳ به بعد (یا در باس‌فایت‌ها)
         if (this.dayCfg.edgeDecreeAllowed || this.dayCfg.bossType) {
             this.loadEdgeDirector();
         }
@@ -621,7 +618,10 @@ export class GameScene extends Phaser.Scene {
         this.bossBountyEarned = Math.round(bounty * gameState.getGoldMultiplier());
         this.bossMilestone = gameState.recordBossDefeated(this.dayCfg.bossType);
         sound.setMusicMode('calm');
-        if (this.bossMilestone) {
+
+        if (this.dayCfg.day >= MAX_CAMPAIGN_DAY) {
+            this.showFloatingText(0, -130, 'قهرمان جزیره! شاه گرگ‌ها شکست خورد!', '#fde047');
+        } else if (this.bossMilestone) {
             this.showFloatingText(
                 0,
                 -130,
@@ -629,6 +629,7 @@ export class GameScene extends Phaser.Scene {
                 '#fde047'
             );
         }
+
         this.time.delayedCall(1300, () => {
             if (this.isDayActive) this.endDay(true);
         });
@@ -809,7 +810,7 @@ export class GameScene extends Phaser.Scene {
         const sfxOn = !gameState.meta.sfxMuted;
         const tierBadge =
             this.dayCfg.worldTier >= 2
-                ? `<span class="hud-island-chip" style="background:${this.dayCfg.worldTier === 3 ? '#b91c1c' : '#7c3aed'};">سطح ${this.dayCfg.worldTier}</span>`
+                ? `<span class="hud-island-chip" style="background:#7c3aed;">سطح ${this.dayCfg.worldTier}</span>`
                 : '';
 
         const wrap = document.createElement('div');
@@ -819,7 +820,7 @@ export class GameScene extends Phaser.Scene {
         <div class="hud-top-right">
           <div class="hud-stage-badge">
             ${icon(cls.icon, 15)}
-            <span>${gameState.mode === 'daily' ? 'روزانه ' : ''}م${this.dayCfg.day}</span>
+            <span>${gameState.mode === 'daily' ? 'روزانه ' : ''}م${this.dayCfg.day}/${MAX_CAMPAIGN_DAY}</span>
             ${tierBadge}
             <span class="hud-island-chip" style="background:${this.season.badgeColor};">
               ${this.season.name} • ${this.dayCfg.island.name}
@@ -1089,6 +1090,8 @@ export class GameScene extends Phaser.Scene {
         sound.playSave();
         sound.playBaa('happy');
         this.activeHay = new HayBait(this, pos.x, pos.y, HAY_CONFIG.DURATION_SEC);
+        // خنثی کردن صاعقه‌های نزدیک بسته علوفه
+        this.chaos?.clearLightningNearHay(pos.x, pos.y);
         this.showFloatingText(pos.x, pos.y - 36, 'بسته علوفه آماده است!', '#fde047');
         this.updateHayButton();
     }
@@ -1140,7 +1143,6 @@ export class GameScene extends Phaser.Scene {
 
         const feverMul = this.feverTimer > 0 ? 1.25 : 1.0;
         const comboMul = this.combo >= 5 ? 1.25 : this.combo >= 3 ? 1.12 : 1.0;
-        // مراحل ۱ و ۲ پاداش ملایم‌تر دارند تا اقتصاد دقیقاً در پایان مرحله ۲ بالانس شود
         const onboardingMul = this.dayCfg.day <= 2 ? 0.72 : 1.0;
         const earned = Math.max(
             1,
@@ -1335,18 +1337,18 @@ export class GameScene extends Phaser.Scene {
         const allowed = this.dayCfg.allowedWolves || ['normal'];
         const d = this.dayCfg.day;
 
-        // ریتم ۲مرحله‌ای: معرفی گرگ سایه در مرحله ۶، گرگ آلفا در مرحله ۸
+        // معرفی گرگ سایه در مرحله ۶ و گرگ آلفا در مرحله ۹
         if (d === 6 && !this.signatureWolfSpawned && allowed.includes('swift')) {
             this.signatureWolfSpawned = true;
             return 'swift';
         }
-        if (d === 8 && !this.signatureWolfSpawned && allowed.includes('alpha')) {
+        if (d === 9 && !this.signatureWolfSpawned && allowed.includes('alpha')) {
             this.signatureWolfSpawned = true;
             return 'alpha';
         }
 
         const r = rand();
-        if (allowed.includes('alpha') && r < Math.min(0.42, 0.22 + Math.max(0, d - 8) * 0.04)) {
+        if (allowed.includes('alpha') && r < 0.34) {
             return 'alpha';
         }
         if (allowed.includes('swift') && r < 0.56) {
@@ -1362,7 +1364,7 @@ export class GameScene extends Phaser.Scene {
         if (type === 'normal') this.triggerDiscovery('wolf_intro');
         else if (type === 'swift') this.triggerDiscovery('wolf_swift');
         else if (type === 'alpha') {
-            this.showFloatingText(0, -95, 'گرگ آلفا وارد شد! به آب پرتش کن', '#fbbf24');
+            this.showFloatingText(0, -95, 'گرگ آلفا وارد شد! به دریا پرتش کن', '#fbbf24');
             this.triggerDiscovery('wolf_alpha');
         }
 
@@ -1739,7 +1741,6 @@ export class GameScene extends Phaser.Scene {
         this.buoysLeft--;
         sound.playBuoyBounce();
 
-        // هزینه بالانسی حلقه نجات: کسر ۲۵٪ پاداش وسط مرحله + ۲۵ واحد نفس
         const penalty = Math.round(this.midDayBonusGold * 0.25);
         if (penalty > 0) {
             this.midDayBonusGold = Math.max(0, this.midDayBonusGold - penalty);
@@ -1826,11 +1827,12 @@ export class GameScene extends Phaser.Scene {
 
         sound.setMusicMode('menu');
         const completedDay = this.dayCfg.day;
+        const isCampaignVictory = isVictory && completedDay >= MAX_CAMPAIGN_DAY;
 
         this.showFloatingText(
             0,
             -35,
-            isVictory ? 'پایان مرحله! پیروزی' : 'پایان مرحله!',
+            isCampaignVictory ? 'پیروزی نهایی! فتح جزیره' : isVictory ? 'پایان مرحله! پیروزی' : 'پایان مرحله!',
             isVictory ? '#4ade80' : '#fca5a5'
         );
 
@@ -1888,6 +1890,7 @@ export class GameScene extends Phaser.Scene {
             this.time.delayedCall(520, () => {
                 showEndOfDayModal({
                     isVictory: true,
+                    isCampaignVictory,
                     completedDay,
                     quota: this.quota,
                     stats,
@@ -1912,6 +1915,7 @@ export class GameScene extends Phaser.Scene {
             this.time.delayedCall(480, () => {
                 showEndOfDayModal({
                     isVictory: false,
+                    isCampaignVictory: false,
                     completedDay,
                     quota: this.quota,
                     stats: null,
@@ -2140,7 +2144,8 @@ export class GameScene extends Phaser.Scene {
                     this.shapeId,
                     this.sheepList,
                     this.dayCfg.allowedChaos,
-                    this.dayCfg.signatureChaos
+                    this.dayCfg.signatureChaos,
+                    this.activeHay
                 );
                 if (this.dayCfg.doubleChaosChance > 0 && rand() < this.dayCfg.doubleChaosChance) {
                     this.time.delayedCall(1850, () => {
@@ -2150,7 +2155,8 @@ export class GameScene extends Phaser.Scene {
                                 this.shapeId,
                                 this.sheepList,
                                 this.dayCfg.allowedChaos,
-                                null
+                                null,
+                                this.activeHay
                             );
                         }
                     });
@@ -2165,7 +2171,8 @@ export class GameScene extends Phaser.Scene {
             this.wolfList,
             this.flowerList,
             () => this.handleSheepLost(),
-            (ev) => this.handleWolfAction(ev)
+            (ev) => this.handleWolfAction(ev),
+            this.activeHay
         );
 
         this.interactables?.update(
