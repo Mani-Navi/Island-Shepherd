@@ -1020,7 +1020,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     syncGoldHud() {
-        const val = String(Math.max(0, gameState.data.gold + this.midDayBonusGold));
+        const val = String(Math.max(0, gameState.data.gold || 0));
         const g1 = document.getElementById('hud-gold');
         const g2 = document.getElementById('hud-gold-d');
         if (g1) g1.textContent = val;
@@ -1182,6 +1182,7 @@ export class GameScene extends Phaser.Scene {
         );
 
         this.midDayBonusGold += earned;
+        gameState.addLiveGold(earned);
         this.syncGoldHud();
 
         this.addFever(extraFever);

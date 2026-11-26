@@ -431,6 +431,8 @@ export function showEndOfDayModal({
     removeModal();
 
     const shopUnlocked = isVictory && !isCampaignVictory && gameState.isCardShopUnlocked(completedDay);
+    const hasCompletedDays =
+        Array.isArray(gameState.data.runLog?.days) && gameState.data.runLog.days.length > 0;
 
     let scoreSubmitted = false;
     let isSubmitting = false;
@@ -471,7 +473,15 @@ export function showEndOfDayModal({
     };
 
     const doSubmitScore = async () => {
-        if (scoreSubmitted || isSubmitting || gameState.data.totalScore <= 0) return scoreReceipt;
+        if (
+            scoreSubmitted ||
+            isSubmitting ||
+            !hasCompletedDays ||
+            !gameState.isNewBestScore(gameState.data.totalScore)
+        ) {
+            return scoreReceipt;
+        }
+
         isSubmitting = true;
         render();
 
@@ -492,6 +502,7 @@ export function showEndOfDayModal({
         if (res?.ok && res.verified) {
             scoreSubmitted = true;
             scoreReceipt = res;
+            gameState.setBestSubmittedScore(gameState.data.totalScore);
         } else if (res) {
             scoreReceipt = res;
         }
@@ -509,7 +520,7 @@ export function showEndOfDayModal({
             <span class="pop-sticker is-yellow">${icon('shield', 20)}</span>
             <div>
               <div class="pop-label" style="color:#ffe047;">
-                ${scoreReceipt.aiTitle ? `لقب تو: ${scoreReceipt.aiTitle}` : 'امتیاز روی لبه تایید شد'}
+                ${scoreReceipt.aiTitle ? `رکورد جدید ثبت شد! لقب: ${scoreReceipt.aiTitle}` : 'رکورد جدیدت خودکار روی لبه ثبت شد'}
               </div>
               <div class="pop-sublabel" style="color:#ffffff;">
                 ${scoreReceipt.chronicle || scoreReceipt.message}
@@ -526,7 +537,7 @@ export function showEndOfDayModal({
       <div class="pop-row" style="background:#7f1d1d;">
         <div class="pop-row-left">
           <span class="pop-sticker">${icon('alert', 19)}</span>
-          <div class="pop-sublabel" style="color:#ffffff;">${scoreReceipt.message || 'ثبت رکورد انجام نشد.'}</div>
+          <div class="pop-sublabel" style="color:#ffffff;">${scoreReceipt.message || 'ثبت خودکار رکورد انجام نشد.'}</div>
         </div>
       </div>
     `;
@@ -668,7 +679,7 @@ export function showEndOfDayModal({
 
           <button type="button" id="btn-victory-lb" class="pop-pill is-green is-full" ${isSubmitting ? 'disabled' : ''}>
             ${icon('trophy', 18)}
-            <span>${isSubmitting ? 'در حال تایید روی لبه...' : scoreSubmitted ? 'مشاهده جدول رده‌بندی' : 'ثبت رکورد قهرمانی و دریافت لقب هوشمند'}</span>
+            <span>${isSubmitting ? 'در حال ثبت خودکار رکورد...' : 'جدول رده‌بندی'}</span>
           </button>
         </div>
 
@@ -768,7 +779,7 @@ export function showEndOfDayModal({
           <div class="pop-grid-2">
             <button type="button" id="btn-fail-lb" class="pop-pill is-full" style="font-size:13px; padding:11px 10px;" ${isSubmitting ? 'disabled' : ''}>
               ${icon('trophy', 17)}
-              <span>${isSubmitting ? 'در حال تایید...' : scoreSubmitted ? 'مشاهده رده‌بندی' : 'ثبت رکورد روی لبه'}</span>
+              <span>${isSubmitting ? 'در حال ثبت خودکار رکورد...' : 'جدول رده‌بندی'}</span>
             </button>
 
             <button type="button" id="btn-fail-restart" class="pop-pill is-full" style="font-size:13px; padding:11px 10px;">
@@ -850,6 +861,8 @@ export function showEndOfDayModal({
         </div>
 
         <div class="pop-body">
+          ${renderReceiptCard()}
+
           <div class="pop-row">
             <div class="pop-row-left">
               <span class="pop-sticker is-yellow">${icon('coin', 20)}</span>
@@ -1176,7 +1189,7 @@ export function showEndOfDayModal({
                     }
             <button type="button" id="btn-submit-lb" class="pop-pill is-full" ${isSubmitting ? 'disabled' : ''}>
               ${icon('trophy', 17)}
-              <span>${isSubmitting ? 'در حال تایید روی لبه...' : scoreSubmitted ? 'مشاهده رده‌بندی' : 'ثبت رکورد و دریافت لقب هوشمند'}</span>
+              <span>${isSubmitting ? 'در حال ثبت خودکار رکورد...' : 'جدول رده‌بندی'}</span>
             </button>
           `
             }
@@ -1253,7 +1266,7 @@ export function showEndOfDayModal({
 
           <button type="button" id="btn-submit-lb" class="pop-pill is-full" style="flex:1;" ${isSubmitting ? 'disabled' : ''}>
             ${icon('trophy', 17)}
-            <span>${isSubmitting ? 'در حال تایید...' : scoreSubmitted ? 'مشاهده رده‌بندی' : 'ثبت رکورد روی لبه'}</span>
+            <span>${isSubmitting ? 'در حال ثبت خودکار رکورد...' : 'جدول رده‌بندی'}</span>
           </button>
         </div>
 
@@ -1406,4 +1419,8 @@ export function showEndOfDayModal({
     window.addEventListener('resize', resizeShopHandler);
 
     render();
+
+    if (hasCompletedDays && gameState.isNewBestScore(gameState.data.totalScore)) {
+        doSubmitScore();
+    }
 }

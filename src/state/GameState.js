@@ -27,6 +27,7 @@ function createDefaultMeta() {
     return {
         selectedClass: 'classic',
         maxDayReached: 1,
+        bestSubmittedScore: 0,
         totalWolvesScared: 0,
         totalWaterKOs: 0,
         totalBossesDefeated: 0,
@@ -92,6 +93,18 @@ class GameStateManager {
             localStorage.setItem(META_KEY, JSON.stringify(this.meta));
         } catch {
             // ignore
+        }
+    }
+
+    isNewBestScore(score = this.data.totalScore) {
+        return Number(score || 0) > Number(this.meta.bestSubmittedScore || 0);
+    }
+
+    setBestSubmittedScore(score) {
+        const clean = Math.max(0, Math.round(Number(score) || 0));
+        if (clean > (this.meta.bestSubmittedScore || 0)) {
+            this.meta.bestSubmittedScore = clean;
+            this.saveMeta();
         }
     }
 
@@ -166,6 +179,22 @@ class GameStateManager {
                 days: [],
             },
         };
+    }
+
+    addLiveGold(amount) {
+        const clean = Math.round(Number(amount) || 0);
+        if (clean <= 0) return;
+        this.data.gold = Math.max(0, (this.data.gold || 0) + clean);
+        this.saveCurrentProgress();
+    }
+
+    spendLiveGold(amount) {
+        const clean = Math.round(Number(amount) || 0);
+        if (clean <= 0) return true;
+        if ((this.data.gold || 0) < clean) return false;
+        this.data.gold = Math.max(0, this.data.gold - clean);
+        this.saveCurrentProgress();
+        return true;
     }
 
     setRunToken(token, startedAt = null) {
@@ -351,11 +380,6 @@ class GameStateManager {
         return Boolean(this.daySnapshot);
     }
 
-    /**
-     * هنگام تلاش مجدد بعد از باخت:
-     * - مصرف علوفه و دافع گل (و خریدهای فروشگاه وسط مرحله / صفحه شکست) حفظ می‌شوند
-     * - فقط آمار مرحله‌ای مثل مرحله، امتیاز و لاگ به ابتدای مرحله برمی‌گردند
-     */
     retryCurrentDay() {
         if (!this.hasDaySnapshot()) return;
         const currentHay = this.data.hayCount;
@@ -363,6 +387,12 @@ class GameStateManager {
         const currentGold = this.data.gold;
         const currentCards = JSON.parse(JSON.stringify(this.data.cards || {}));
         const currentRerolls = this.data.freeRerolls;
+        const currentBossesBeaten = Array.isArray(this.data.bossesBeaten)
+            ? [...this.data.bossesBeaten]
+            : [];
+        const currentBossPerks = Array.isArray(this.data.bossPerks)
+            ? [...this.data.bossPerks]
+            : [];
 
         this.data = JSON.parse(JSON.stringify(this.daySnapshot));
         this.data.hayCount = currentHay;
@@ -370,6 +400,8 @@ class GameStateManager {
         this.data.gold = currentGold;
         this.data.cards = currentCards;
         this.data.freeRerolls = currentRerolls;
+        this.data.bossesBeaten = currentBossesBeaten;
+        this.data.bossPerks = currentBossPerks;
         this.saveCurrentProgress();
     }
 
@@ -672,11 +704,11 @@ class GameStateManager {
         return this.checkNewClassUnlocks(before);
     }
 
-    completeDay(aliveSheepCount, netGold, stats, completedMission = null) {
+    completeDay(aliveSheepCount, endStageGoldDelta, stats, completedMission = null) {
         const before = this.getUnlockedClassSet();
         const completedDay = this.data.day;
 
-        this.data.gold = Math.max(0, this.data.gold + netGold);
+        this.data.gold = Math.max(0, (this.data.gold || 0) + (endStageGoldDelta || 0));
 
         if (completedMission) {
             this.lastMissionId = completedMission.id;
@@ -685,14 +717,15 @@ class GameStateManager {
             }
         }
 
-        const stageScore = netGold + completedDay * 50 + aliveSheepCount * 12;
+        const totalEarnedThisDay = stats?.totalGold ?? endStageGoldDelta;
+        const stageScore = totalEarnedThisDay + completedDay * 50 + aliveSheepCount * 12;
         this.data.totalScore += stageScore;
 
         this.data.runLog.days.push({
             day: completedDay,
             sheepSurvived: aliveSheepCount,
             flowersSurvived: stats?.aliveFlowerCount ?? 0,
-            goldEarned: netGold,
+            goldEarned: totalEarnedThisDay,
             finishedAt: Date.now(),
         });
 
